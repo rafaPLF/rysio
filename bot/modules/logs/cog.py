@@ -124,22 +124,63 @@ class LogsCog(commands.Cog):
         )
 
     @commands.Cog.listener()
-    async def on_message_delete(self, message: discord.Message) -> None:
-        if message.guild is None or message.author.bot:
-            return
-
+    async def _write_deleted_message_event(
+        self,
+        guild: discord.Guild,
+        *,
+        channel_id: int | None,
+        message_id: int,
+        author_id: int | None = None,
+        author_name: str | None = None,
+        content: str | None = None,
+        cached: bool,
+    ) -> None:
+        channel_label = f"<#{channel_id}>" if channel_id else "unknown-channel"
         await self._service.write_event(
             self.bot,
-            message.guild,
+            guild,
             "message.delete",
-            f"Message deleted in #{message.channel}.",
-            user_id=message.author.id,
-            channel_id=message.channel.id,
+            f"Message deleted in {channel_label}.",
+            user_id=author_id,
+            channel_id=channel_id,
             details={
-                "author": str(message.author),
-                "content": message.content[:900] if message.content else None,
-                "message_id": message.id,
+                "author": author_name,
+                "content": content[:900] if content else None,
+                "message_id": message_id,
+                "cached": cached,
             },
+        )
+
+    @commands.Cog.listener()
+    async def on_raw_message_delete(self, payload: discord.RawMessageDeleteEvent) -> None:
+        if payload.guild_id is None:
+            return
+
+        guild = self.bot.get_guild(payload.guild_id)
+        if guild is None:
+            return
+
+        cached_message = payload.cached_message
+        if cached_message is not None:
+            if cached_message.author.bot:
+                return
+
+            await self._write_deleted_message_event(
+                guild,
+                channel_id=payload.channel_id,
+                message_id=payload.message_id,
+                author_id=cached_message.author.id,
+                author_name=str(cached_message.author),
+                content=cached_message.content,
+                cached=True,
+            )
+            return
+
+        await self._write_deleted_message_event(
+            guild,
+            channel_id=payload.channel_id,
+            message_id=payload.message_id,
+            cached=False,
         )
 
     @commands.Cog.listener()
