@@ -192,7 +192,7 @@ async def cors_middleware(request: web.Request, handler):
     if allowed_origin and origin == allowed_origin:
         response.headers["Access-Control-Allow-Origin"] = request.headers.get("Origin", allowed_origin).rstrip("/")
         response.headers["Vary"] = "Origin"
-        response.headers["Access-Control-Allow-Headers"] = "Authorization, Content-Type"
+        response.headers["Access-Control-Allow-Headers"] = "Authorization, Content-Type, X-Rysio-Panel-Token"
         response.headers["Access-Control-Allow-Methods"] = "GET, OPTIONS"
     return response
 
