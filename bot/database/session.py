@@ -7,7 +7,7 @@ from sqlalchemy import inspect, text
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 
 from bot.database.base import Base
-from bot.database.models import AuditLog, Guild, GuildSettings, LFGPost, PremiumSubscription, ReactionRoleEntry, ReactionRolePanel, TempVoiceChannel, Ticket, TicketPanel, VerificationSettings  # noqa: F401
+from bot.database.models import AuditLog, Guild, GuildSettings, LFGPost, NotificationSubscription, PremiumSubscription, ReactionRoleEntry, ReactionRolePanel, TempVoiceChannel, Ticket, TicketPanel, VerificationSettings  # noqa: F401
 
 
 class DatabaseSessionManager:

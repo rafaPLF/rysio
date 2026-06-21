@@ -18,9 +18,12 @@ class Settings:
     discord_client_secret: str = ""
     discord_redirect_uri: str = ""
     panel_public_url: str = ""
+    twitch_client_id: str = ""
+    twitch_client_secret: str = ""
     bot_prefix: str = "!"
     default_language: str = "de"
     log_level: str = "INFO"
+    notifications_poll_interval_seconds: int = 180
     enable_members_intent: bool = False
     enable_message_content_intent: bool = False
     web_api_enabled: bool = False
@@ -59,9 +62,14 @@ def get_settings() -> Settings:
         discord_client_secret=os.getenv("DISCORD_CLIENT_SECRET", "").strip(),
         discord_redirect_uri=os.getenv("DISCORD_REDIRECT_URI", "").strip(),
         panel_public_url=os.getenv("PANEL_PUBLIC_URL", "").strip(),
+        twitch_client_id=os.getenv("TWITCH_CLIENT_ID", "").strip(),
+        twitch_client_secret=os.getenv("TWITCH_CLIENT_SECRET", "").strip(),
         bot_prefix=os.getenv("BOT_PREFIX", "!").strip() or "!",
         default_language=os.getenv("DEFAULT_LANGUAGE", "de").strip() or "de",
         log_level=os.getenv("LOG_LEVEL", "INFO").strip() or "INFO",
+        notifications_poll_interval_seconds=int(
+            os.getenv("NOTIFICATIONS_POLL_INTERVAL_SECONDS", "180").strip() or "180"
+        ),
         enable_members_intent=_get_bool("ENABLE_MEMBERS_INTENT", False),
         enable_message_content_intent=_get_bool("ENABLE_MESSAGE_CONTENT_INTENT", False),
         web_api_enabled=web_api_enabled,

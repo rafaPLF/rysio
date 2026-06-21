@@ -10,4 +10,5 @@ INITIAL_EXTENSIONS = (
     "bot.modules.tickets.cog",
     "bot.modules.lfg.cog",
     "bot.modules.premium.cog",
+    "bot.modules.notifications.cog",
 )
