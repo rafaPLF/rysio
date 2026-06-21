@@ -208,8 +208,23 @@ def build_help_embed(bot: commands.Bot, language: str) -> discord.Embed:
         inline=False,
     )
     embed.add_field(
+        name="Reaction Roles",
+        value="`/reactionroles status`\n`/reactionroles create`\n`/reactionroles manage`\n`/reactionroles delete`",
+        inline=False,
+    )
+    embed.add_field(
         name="Autoroles",
         value="`/autorole status`\n`/autorole setup`\n`/autorole disable`",
+        inline=False,
+    )
+    embed.add_field(
+        name="Join To Create",
+        value="`/jtc status`\n`/jtc setup`\n`/jtc disable`",
+        inline=False,
+    )
+    embed.add_field(
+        name="Logs",
+        value="`/logs status`\n`/logs setup`\n`/logs disable`",
         inline=False,
     )
     embed.add_field(

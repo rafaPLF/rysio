@@ -7,7 +7,7 @@ from sqlalchemy import inspect, text
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 
 from bot.database.base import Base
-from bot.database.models import Guild, GuildSettings, LFGPost, PremiumSubscription, Ticket, TicketPanel, VerificationSettings  # noqa: F401
+from bot.database.models import AuditLog, Guild, GuildSettings, LFGPost, PremiumSubscription, ReactionRoleEntry, ReactionRolePanel, TempVoiceChannel, Ticket, TicketPanel, VerificationSettings  # noqa: F401
 
 
 class DatabaseSessionManager:
@@ -60,3 +60,15 @@ class DatabaseSessionManager:
             connection.execute(text("ALTER TABLE guild_settings ADD COLUMN spam_action VARCHAR(16) DEFAULT 'delete_warn'"))
         if "info_channel_id" not in guild_settings_columns:
             connection.execute(text("ALTER TABLE guild_settings ADD COLUMN info_channel_id BIGINT"))
+        if "logs_enabled" not in guild_settings_columns:
+            connection.execute(text("ALTER TABLE guild_settings ADD COLUMN logs_enabled BOOLEAN DEFAULT FALSE"))
+        if "logs_channel_id" not in guild_settings_columns:
+            connection.execute(text("ALTER TABLE guild_settings ADD COLUMN logs_channel_id BIGINT"))
+        if "last_patch_notes_version" not in guild_settings_columns:
+            connection.execute(text("ALTER TABLE guild_settings ADD COLUMN last_patch_notes_version VARCHAR(32)"))
+        if "join_to_create_enabled" not in guild_settings_columns:
+            connection.execute(text("ALTER TABLE guild_settings ADD COLUMN join_to_create_enabled BOOLEAN DEFAULT FALSE"))
+        if "join_to_create_channel_id" not in guild_settings_columns:
+            connection.execute(text("ALTER TABLE guild_settings ADD COLUMN join_to_create_channel_id BIGINT"))
+        if "join_to_create_category_id" not in guild_settings_columns:
+            connection.execute(text("ALTER TABLE guild_settings ADD COLUMN join_to_create_category_id BIGINT"))

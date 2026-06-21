@@ -88,3 +88,45 @@ class GuildRepository:
         settings.info_channel_id = channel_id
         await self.session.flush()
         return settings
+
+    async def set_join_to_create(
+        self,
+        guild_id: int,
+        enabled: bool,
+        channel_id: int | None,
+        category_id: int | None,
+        default_language: str,
+    ) -> GuildSettings:
+        await self.ensure_guild(guild_id, default_language)
+        settings = await self.ensure_settings(guild_id)
+        settings.join_to_create_enabled = enabled
+        settings.join_to_create_channel_id = channel_id
+        settings.join_to_create_category_id = category_id
+        await self.session.flush()
+        return settings
+
+    async def set_logs(
+        self,
+        guild_id: int,
+        enabled: bool,
+        channel_id: int | None,
+        default_language: str,
+    ) -> GuildSettings:
+        await self.ensure_guild(guild_id, default_language)
+        settings = await self.ensure_settings(guild_id)
+        settings.logs_enabled = enabled
+        settings.logs_channel_id = channel_id
+        await self.session.flush()
+        return settings
+
+    async def set_last_patch_notes_version(
+        self,
+        guild_id: int,
+        version: str | None,
+        default_language: str,
+    ) -> GuildSettings:
+        await self.ensure_guild(guild_id, default_language)
+        settings = await self.ensure_settings(guild_id)
+        settings.last_patch_notes_version = version
+        await self.session.flush()
+        return settings

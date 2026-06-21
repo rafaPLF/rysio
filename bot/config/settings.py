@@ -19,6 +19,11 @@ class Settings:
     log_level: str = "INFO"
     enable_members_intent: bool = False
     enable_message_content_intent: bool = False
+    web_api_enabled: bool = False
+    web_api_host: str = "127.0.0.1"
+    web_api_port: int = 8080
+    web_api_token: str = ""
+    web_api_allowed_origin: str = ""
 
 
 def _get_bool(name: str, default: bool = False) -> bool:
@@ -38,6 +43,11 @@ def get_settings() -> Settings:
     if not database_url:
         raise BotConfigurationError("DATABASE_URL is missing in the environment.")
 
+    web_api_enabled = _get_bool("WEB_API_ENABLED", False)
+    web_api_token = os.getenv("WEB_API_TOKEN", "").strip()
+    if web_api_enabled and not web_api_token:
+        raise BotConfigurationError("WEB_API_TOKEN is required when WEB_API_ENABLED is true.")
+
     return Settings(
         discord_token=discord_token,
         database_url=database_url,
@@ -46,4 +56,9 @@ def get_settings() -> Settings:
         log_level=os.getenv("LOG_LEVEL", "INFO").strip() or "INFO",
         enable_members_intent=_get_bool("ENABLE_MEMBERS_INTENT", False),
         enable_message_content_intent=_get_bool("ENABLE_MESSAGE_CONTENT_INTENT", False),
+        web_api_enabled=web_api_enabled,
+        web_api_host=os.getenv("WEB_API_HOST", "127.0.0.1").strip() or "127.0.0.1",
+        web_api_port=int(os.getenv("WEB_API_PORT", "8080").strip() or "8080"),
+        web_api_token=web_api_token,
+        web_api_allowed_origin=os.getenv("WEB_API_ALLOWED_ORIGIN", "").strip(),
     )

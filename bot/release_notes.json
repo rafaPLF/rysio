@@ -1,0 +1,10 @@
+{
+  "version": "0.4.0",
+  "title": "Reaction Roles und Join to Create",
+  "summary": "Rysio hat jetzt neue Community-Features und eine bessere Admin-Verwaltung.",
+  "highlights": [
+    "Reaction-Role-Panels koennen erstellt und ueber eine interaktive UI verwaltet werden.",
+    "Join to Create Voice kann jetzt temporaere Sprachkanaele automatisch erstellen und wieder loeschen.",
+    "Mehrere Setup- und Statusbefehle wurden weiter aufgeraeumt und verbessert."
+  ]
+}

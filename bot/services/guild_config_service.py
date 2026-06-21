@@ -75,3 +75,42 @@ class GuildConfigService:
         async with database.session() as session:
             repo = GuildRepository(session)
             await repo.set_info_channel(guild_id, channel_id, self.default_language)
+
+    async def set_join_to_create(
+        self,
+        database: DatabaseSessionManager,
+        guild_id: int,
+        enabled: bool,
+        channel_id: int | None,
+        category_id: int | None,
+    ) -> None:
+        async with database.session() as session:
+            repo = GuildRepository(session)
+            await repo.set_join_to_create(
+                guild_id,
+                enabled,
+                channel_id,
+                category_id,
+                self.default_language,
+            )
+
+    async def set_last_patch_notes_version(
+        self,
+        database: DatabaseSessionManager,
+        guild_id: int,
+        version: str | None,
+    ) -> None:
+        async with database.session() as session:
+            repo = GuildRepository(session)
+            await repo.set_last_patch_notes_version(guild_id, version, self.default_language)
+
+    async def set_logs(
+        self,
+        database: DatabaseSessionManager,
+        guild_id: int,
+        enabled: bool,
+        channel_id: int | None,
+    ) -> None:
+        async with database.session() as session:
+            repo = GuildRepository(session)
+            await repo.set_logs(guild_id, enabled, channel_id, self.default_language)

@@ -3,3 +3,6 @@ __pycache__/
 *.pyc
 bot/data/
 rysio.db
+.venv/
+local_dev.out.log
+local_dev.err.log
