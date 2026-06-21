@@ -219,32 +219,26 @@ class NotificationService:
 
     async def _fetch_kick_latest(self, slug: str) -> NotificationContent | None:
         assert self._session is not None
-        async with self._session.get(f"https://kick.com/api/v2/channels/{slug}") as response:
-            if response.status >= 400:
-                return None
-            payload = await response.json()
+        payloads: list[dict[str, Any]] = []
+        for url in (
+            f"https://kick.com/api/v2/channels/{slug}",
+            f"https://kick.com/api/v1/channels/{slug}",
+        ):
+            async with self._session.get(url) as response:
+                if response.status >= 400:
+                    continue
+                try:
+                    payload = await response.json()
+                except aiohttp.ContentTypeError:
+                    continue
+                if isinstance(payload, dict):
+                    payloads.append(payload)
 
-        livestream = payload.get("livestream")
-        if not isinstance(livestream, dict):
-            return None
-
-        content_id = str(
-            livestream.get("id")
-            or livestream.get("session_title")
-            or livestream.get("created_at")
-            or slug
-        )
-        title = str(livestream.get("session_title") or f"{slug} ist live auf Kick")
-        thumbnail = livestream.get("thumbnail") or payload.get("banner_image", {}).get("url")
-        return NotificationContent(
-            content_id=content_id,
-            title=title,
-            url=f"https://kick.com/{slug}",
-            creator_name=str(payload.get("user", {}).get("username") or payload.get("slug") or slug),
-            description="Kick Livestream gestartet.",
-            thumbnail_url=str(thumbnail) if thumbnail else None,
-            platform_label="Kick",
-        )
+        for payload in payloads:
+            content = self._parse_kick_payload(slug, payload)
+            if content is not None:
+                return content
+        return None
 
     async def _get_twitch_app_token(self, bot: discord.Client) -> str | None:
         if time.time() < self._twitch_token_expires_at and self._twitch_token:
@@ -289,3 +283,77 @@ class NotificationService:
         if content.thumbnail_url:
             embed.set_image(url=content.thumbnail_url)
         return embed
+
+    def _parse_kick_payload(self, slug: str, payload: dict[str, Any]) -> NotificationContent | None:
+        livestream = payload.get("livestream") or payload.get("stream") or payload.get("broadcast")
+        if not isinstance(livestream, dict):
+            return None
+
+        if not self._kick_stream_looks_live(livestream):
+            return None
+
+        creator_name = self._pick_first_string(
+            payload.get("user", {}).get("username") if isinstance(payload.get("user"), dict) else None,
+            payload.get("user", {}).get("name") if isinstance(payload.get("user"), dict) else None,
+            payload.get("slug"),
+            slug,
+        )
+        title = self._pick_first_string(
+            livestream.get("session_title"),
+            livestream.get("title"),
+            livestream.get("slug"),
+            f"{slug} ist live auf Kick",
+        )
+        content_id = self._pick_first_string(
+            livestream.get("id"),
+            livestream.get("slug"),
+            livestream.get("created_at"),
+            livestream.get("start_time"),
+            livestream.get("started_at"),
+            title,
+            slug,
+        )
+        thumbnail = self._pick_first_string(
+            livestream.get("thumbnail"),
+            livestream.get("thumbnail_url"),
+            payload.get("banner_image", {}).get("url") if isinstance(payload.get("banner_image"), dict) else None,
+        )
+
+        return NotificationContent(
+            content_id=content_id,
+            title=title,
+            url=f"https://kick.com/{slug}",
+            creator_name=creator_name,
+            description="Kick Livestream gestartet.",
+            thumbnail_url=thumbnail,
+            platform_label="Kick",
+        )
+
+    def _kick_stream_looks_live(self, livestream: dict[str, Any]) -> bool:
+        for key in ("is_live", "live", "isLivestream", "livestream"):
+            value = livestream.get(key)
+            if isinstance(value, bool):
+                return value
+
+        status = self._pick_first_string(
+            livestream.get("status"),
+            livestream.get("livestream_status"),
+            livestream.get("state"),
+        ).lower()
+        if status in {"live", "online", "streaming"}:
+            return True
+
+        if livestream.get("session_title") or livestream.get("title"):
+            if livestream.get("started_at") or livestream.get("start_time") or livestream.get("created_at"):
+                return True
+
+        return False
+
+    def _pick_first_string(self, *values: Any) -> str:
+        for value in values:
+            if value is None:
+                continue
+            text = str(value).strip()
+            if text:
+                return text
+        return ""
