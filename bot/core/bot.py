@@ -56,7 +56,7 @@ class DCBot(commands.Bot):
         self.tickets = tickets
         self.verification = verification
         self.owner_control = owner_control
-        self.web_api = WebApiServer(settings, database)
+        self.web_api = WebApiServer(settings, database, bot=self)
         self._patch_notes_checked = False
 
     async def setup_hook(self) -> None:

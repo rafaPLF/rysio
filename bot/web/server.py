@@ -12,9 +12,10 @@ logger = logging.getLogger(__name__)
 
 
 class WebApiServer:
-    def __init__(self, settings: Settings, database: DatabaseSessionManager) -> None:
+    def __init__(self, settings: Settings, database: DatabaseSessionManager, *, bot=None) -> None:
         self._settings = settings
         self._database = database
+        self._bot = bot
         self._runner: web.AppRunner | None = None
         self._site: web.TCPSite | None = None
 
@@ -26,6 +27,7 @@ class WebApiServer:
             self._database,
             self._settings.web_api_token,
             allowed_origin=self._settings.web_api_allowed_origin,
+            bot=self._bot,
         )
         self._runner = web.AppRunner(app)
         await self._runner.setup()

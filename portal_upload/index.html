@@ -431,18 +431,24 @@
       <aside class="sidebar">
         <section class="block login-box">
           <h2>Discord Login</h2>
-          <p class="muted">Genau so werden wir es spaeter machen: Login mit Discord statt eigene Accounts in deiner Datenbank.</p>
+          <p class="muted">Login mit Discord statt eigene Accounts in deiner Datenbank. Der Secret-Teil bleibt nur auf deinem Bot-Server.</p>
           <div class="button-row" style="margin-top:14px;">
             <button class="discord-button" type="button" id="discordLoginButton">Mit Discord anmelden</button>
+            <button class="ghost" type="button" id="logoutButton">Discord Logout</button>
           </div>
-          <p class="hint small" style="margin-top:12px;">Aktuell ist das nur vorbereitet. Der echte OAuth-Flow kommt im naechsten Backend-Schritt.</p>
+          <p id="loginStatus" class="hint small" style="margin-top:12px;">Noch nicht mit Discord verbunden.</p>
+          <p id="sessionMeta" class="hint small" style="margin-top:8px;"></p>
         </section>
 
         <section class="block">
           <h2>Server Auswahl</h2>
+          <label for="guildSelect">Discord Server</label>
+          <select id="guildSelect">
+            <option value="">Erst per Discord einloggen</option>
+          </select>
           <label for="guildId">Guild ID</label>
           <input id="guildId" placeholder="123456789012345678">
-          <p class="hint small" style="margin-top:10px;">Spaeter wird diese Liste automatisch aus deinen Discord-Servern geladen.</p>
+          <p class="hint small" style="margin-top:10px;">Nach dem Login wird die Serverliste automatisch aus Discord geladen. Du kannst die Guild ID trotzdem manuell ueberschreiben.</p>
         </section>
 
         <section class="block">
@@ -646,16 +652,22 @@
   <script>
     const DEFAULT_API_BASE_URL = "";
     const apiBaseUrlInput = document.getElementById("apiBaseUrl");
+    const guildSelect = document.getElementById("guildSelect");
     const guildIdInput = document.getElementById("guildId");
     const apiTokenInput = document.getElementById("apiToken");
     const limitInput = document.getElementById("limit");
     const eventTypeInput = document.getElementById("eventType");
     const statusText = document.getElementById("statusText");
     const errorText = document.getElementById("errorText");
+    const loginStatus = document.getElementById("loginStatus");
+    const sessionMeta = document.getElementById("sessionMeta");
     const totalStat = document.getElementById("totalStat");
     const loadedStat = document.getElementById("loadedStat");
     const entries = document.getElementById("entries");
     const STORAGE_KEY = "rysio-control-panel";
+    const SESSION_STORAGE_KEY = "rysio-panel-session-token";
+    let panelSessionToken = "";
+    let panelSession = null;
 
     function escapeHtml(value) {
       return String(value)
@@ -679,6 +691,10 @@
       } catch {}
     }
 
+    function loadSavedSessionToken() {
+      panelSessionToken = localStorage.getItem(SESSION_STORAGE_KEY) || "";
+    }
+
     function saveState() {
       const payload = {
         apiBaseUrl: apiBaseUrlInput.value.trim(),
@@ -699,6 +715,82 @@
       }
       errorText.hidden = false;
       errorText.textContent = message;
+    }
+
+    function setLoginState(message, meta = "") {
+      loginStatus.textContent = message;
+      sessionMeta.textContent = meta;
+    }
+
+    function renderGuildOptions(guilds) {
+      guildSelect.innerHTML = '<option value="">Server auswaehlen</option>';
+      guilds.forEach((guild) => {
+        const option = document.createElement("option");
+        option.value = guild.id;
+        option.textContent = guild.bot_in_guild ? `${guild.name} (${guild.id})` : `${guild.name} (${guild.id}) - Bot noch nicht drin`;
+        guildSelect.appendChild(option);
+      });
+    }
+
+    async function fetchPanelSession() {
+      if (!panelSessionToken) {
+        panelSession = null;
+        renderGuildOptions([]);
+        setLoginState("Noch nicht mit Discord verbunden.");
+        return;
+      }
+
+      const apiBaseUrl = apiBaseUrlInput.value.trim().replace(/\/$/, "");
+      if (!apiBaseUrl) {
+        setLoginState("API Base URL fehlt noch fuer den Discord-Login.");
+        return;
+      }
+
+      try {
+        const response = await fetch(`${apiBaseUrl}/api/panel/session`, {
+          headers: {
+            "X-Rysio-Panel-Token": panelSessionToken,
+          },
+        });
+        const payload = await response.json();
+        if (!response.ok) {
+          throw new Error(payload.error || `HTTP ${response.status}`);
+        }
+
+        panelSession = payload;
+        renderGuildOptions(payload.guilds || []);
+        if (!guildIdInput.value && payload.guilds?.length) {
+          guildIdInput.value = payload.guilds[0].id;
+          guildSelect.value = payload.guilds[0].id;
+        }
+
+        const displayName = payload.user?.global_name || payload.user?.username || "Discord User";
+        setLoginState(`Eingeloggt als ${displayName}.`, `${payload.guilds?.length || 0} verwaltbare Server von Discord geladen.`);
+      } catch (error) {
+        panelSession = null;
+        panelSessionToken = "";
+        localStorage.removeItem(SESSION_STORAGE_KEY);
+        renderGuildOptions([]);
+        setLoginState("Discord-Session ist ungueltig oder abgelaufen.", String(error.message || error));
+      }
+    }
+
+    function consumeOAuthCallback() {
+      const hash = window.location.hash.startsWith("#") ? window.location.hash.slice(1) : "";
+      if (!hash) return;
+      const params = new URLSearchParams(hash);
+      const oauthToken = params.get("rysio_panel_token");
+      const oauthError = params.get("rysio_oauth_error");
+      if (oauthToken) {
+        panelSessionToken = oauthToken;
+        localStorage.setItem(SESSION_STORAGE_KEY, oauthToken);
+      }
+      if (oauthError) {
+        setError(`Discord Login fehlgeschlagen: ${oauthError}`);
+      }
+      if (oauthToken || oauthError) {
+        history.replaceState(null, "", window.location.pathname + window.location.search);
+      }
     }
 
     function renderEntries(items) {
@@ -738,7 +830,7 @@
         setError("Bitte zuerst eine Guild ID eintragen.");
         return;
       }
-      if (!apiToken) {
+      if (!panelSessionToken && !apiToken) {
         setError("Bitte zuerst den WEB_API_TOKEN eintragen.");
         return;
       }
@@ -751,8 +843,15 @@
       if (eventType) params.set("event_type", eventType);
 
       try {
+        const headers = {};
+        if (panelSessionToken) {
+          headers["X-Rysio-Panel-Token"] = panelSessionToken;
+        } else {
+          headers.Authorization = `Bearer ${apiToken}`;
+        }
+
         const response = await fetch(`${apiBaseUrl}/api/guilds/${guildId}/logs?${params.toString()}`, {
-          headers: { Authorization: `Bearer ${apiToken}` },
+          headers,
         });
         const payload = await response.json();
         if (!response.ok) {
@@ -774,11 +873,31 @@
 
     document.getElementById("loadButton").addEventListener("click", loadLogs);
     document.getElementById("saveButton").addEventListener("click", saveState);
+    guildSelect.addEventListener("change", () => {
+      guildIdInput.value = guildSelect.value;
+      saveState();
+    });
     document.getElementById("discordLoginButton").addEventListener("click", () => {
-      statusText.textContent = "Discord OAuth ist vorbereitet, aber noch nicht ans Backend angebunden.";
+      const apiBaseUrl = apiBaseUrlInput.value.trim().replace(/\/$/, "");
+      if (!apiBaseUrl) {
+        setError("Bitte zuerst die API Base URL eintragen.");
+        return;
+      }
+      saveState();
+      window.location.href = `${apiBaseUrl}/api/oauth/discord/login`;
+    });
+    document.getElementById("logoutButton").addEventListener("click", () => {
+      panelSession = null;
+      panelSessionToken = "";
+      localStorage.removeItem(SESSION_STORAGE_KEY);
+      renderGuildOptions([]);
+      setLoginState("Discord-Session wurde lokal entfernt.");
       setError("");
     });
+    consumeOAuthCallback();
     loadSavedState();
+    loadSavedSessionToken();
+    fetchPanelSession();
   </script>
 </body>
 </html>

@@ -14,6 +14,10 @@ load_dotenv()
 class Settings:
     discord_token: str
     database_url: str
+    discord_client_id: str = ""
+    discord_client_secret: str = ""
+    discord_redirect_uri: str = ""
+    panel_public_url: str = ""
     bot_prefix: str = "!"
     default_language: str = "de"
     log_level: str = "INFO"
@@ -51,6 +55,10 @@ def get_settings() -> Settings:
     return Settings(
         discord_token=discord_token,
         database_url=database_url,
+        discord_client_id=os.getenv("DISCORD_CLIENT_ID", "").strip(),
+        discord_client_secret=os.getenv("DISCORD_CLIENT_SECRET", "").strip(),
+        discord_redirect_uri=os.getenv("DISCORD_REDIRECT_URI", "").strip(),
+        panel_public_url=os.getenv("PANEL_PUBLIC_URL", "").strip(),
         bot_prefix=os.getenv("BOT_PREFIX", "!").strip() or "!",
         default_language=os.getenv("DEFAULT_LANGUAGE", "de").strip() or "de",
         log_level=os.getenv("LOG_LEVEL", "INFO").strip() or "INFO",
