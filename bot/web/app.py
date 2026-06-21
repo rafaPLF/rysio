@@ -28,6 +28,12 @@ def _decode_details(raw: str | None) -> dict[str, Any] | None:
     return data if isinstance(data, dict) else {"value": data}
 
 
+def _normalize_origin(value: str | None) -> str:
+    if not value:
+        return ""
+    return value.strip().rstrip("/").lower()
+
+
 @web.middleware
 async def auth_middleware(request: web.Request, handler):
     if request.method == "OPTIONS":
@@ -101,10 +107,10 @@ async def cors_middleware(request: web.Request, handler):
     else:
         response = await handler(request)
 
-    allowed_origin = request.app["allowed_origin"]
-    origin = request.headers.get("Origin")
+    allowed_origin = _normalize_origin(request.app["allowed_origin"])
+    origin = _normalize_origin(request.headers.get("Origin"))
     if allowed_origin and origin == allowed_origin:
-        response.headers["Access-Control-Allow-Origin"] = allowed_origin
+        response.headers["Access-Control-Allow-Origin"] = request.headers.get("Origin", allowed_origin).rstrip("/")
         response.headers["Vary"] = "Origin"
         response.headers["Access-Control-Allow-Headers"] = "Authorization, Content-Type"
         response.headers["Access-Control-Allow-Methods"] = "GET, OPTIONS"
