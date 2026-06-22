@@ -25,6 +25,7 @@ class NotificationsGroup(app_commands.Group):
         platform="Plattform",
         target="Bei YouTube: Channel-ID. Bei Twitch/Kick: Username.",
         channel="Discord-Channel fuer die Benachrichtigung",
+        mention_role="Optionale Rolle, die bei Live-Benachrichtigungen gepingt wird",
     )
     @app_commands.choices(platform=PLATFORM_CHOICES)
     async def add(
@@ -33,6 +34,7 @@ class NotificationsGroup(app_commands.Group):
         platform: app_commands.Choice[str],
         target: str,
         channel: discord.TextChannel,
+        mention_role: discord.Role | None = None,
     ) -> None:
         if interaction.guild is None:
             await interaction.response.send_message("Das geht nur in einem Server.", ephemeral=True)
@@ -42,23 +44,31 @@ class NotificationsGroup(app_commands.Group):
             return
 
         try:
-            last_seen_id = await self._service.add_subscription(
+            last_seen_id, initial_content_found = await self._service.add_subscription(
                 interaction.client,
                 guild_id=interaction.guild.id,
                 platform=platform.value,
                 target=target,
                 announce_channel_id=channel.id,
+                mention_role_id=mention_role.id if mention_role else None,
             )
         except ValueError:
             await interaction.response.send_message("Diese Plattform wird aktuell nicht unterstuetzt.", ephemeral=True)
             return
 
         target_label = self._service.normalize_target(platform.value, target)
-        suffix = "Es wird erst ab dem naechsten neuen Upload/Live-Start gepostet."
-        if last_seen_id is None:
-            suffix = "Aktuell wurde noch kein letzter Inhalt gefunden. Der erste Fund wird direkt gepostet."
+        role_suffix = f" Rollen-Ping: {mention_role.mention}." if mention_role else ""
+        if platform.value == "youtube":
+            suffix = "Es wird erst ab dem naechsten neuen Upload gepostet."
+            if last_seen_id is None:
+                suffix = "Aktuell wurde noch kein letzter Inhalt gefunden. Der erste Fund wird direkt gepostet."
+        else:
+            if initial_content_found:
+                suffix = "Der Kanal ist aktuell live. Beim naechsten Check wird der Stream einmalig direkt gepostet."
+            else:
+                suffix = "Aktuell ist der Kanal nicht live. Beim naechsten Live-Start wird gepostet."
         await interaction.response.send_message(
-            f"Benachrichtigung gespeichert: `{platform.value}` fuer `{target_label}` in {channel.mention}. {suffix}",
+            f"Benachrichtigung gespeichert: `{platform.value}` fuer `{target_label}` in {channel.mention}.{role_suffix} {suffix}",
             ephemeral=True,
         )
 
@@ -101,8 +111,9 @@ class NotificationsGroup(app_commands.Group):
 
         lines = []
         for subscription in subscriptions:
+            role_text = f" | Ping -> <@&{subscription.mention_role_id}>" if subscription.mention_role_id else ""
             lines.append(
-                f"- `{subscription.platform}` | `{subscription.target}` -> <#{subscription.announce_channel_id}>"
+                f"- `{subscription.platform}` | `{subscription.target}` -> <#{subscription.announce_channel_id}>{role_text}"
             )
         await interaction.response.send_message("\n".join(lines), ephemeral=True)
 

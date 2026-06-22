@@ -22,6 +22,11 @@ class TicketRepository:
         result = await self.session.execute(query)
         return result.rowcount or 0
 
+    async def delete_panel_by_id(self, panel_id: int) -> int:
+        query = delete(TicketPanel).where(TicketPanel.id == panel_id)
+        result = await self.session.execute(query)
+        return result.rowcount or 0
+
     async def delete_panels_for_guild(self, guild_id: int) -> int:
         query = delete(TicketPanel).where(TicketPanel.guild_id == guild_id)
         result = await self.session.execute(query)
@@ -34,6 +39,7 @@ class TicketRepository:
         message_id: int,
         category_id: int | None,
         support_role_id: int | None,
+        welcome_message: str | None,
     ) -> TicketPanel:
         panel = TicketPanel(
             guild_id=guild_id,
@@ -41,6 +47,7 @@ class TicketRepository:
             message_id=message_id,
             category_id=category_id,
             support_role_id=support_role_id,
+            welcome_message=welcome_message,
         )
         self.session.add(panel)
         await self.session.flush()
@@ -68,13 +75,13 @@ class TicketRepository:
         query = select(Ticket).where(
             Ticket.guild_id == guild_id,
             Ticket.user_id == user_id,
-            Ticket.status == "open",
+            Ticket.status.in_(["open", "claimed", "waiting_user"]),
         )
         result = await self.session.execute(query)
         return result.scalar_one_or_none()
 
-    async def create_ticket(self, guild_id: int, channel_id: int, user_id: int) -> Ticket:
-        ticket = Ticket(guild_id=guild_id, channel_id=channel_id, user_id=user_id, status="open")
+    async def create_ticket(self, guild_id: int, channel_id: int, user_id: int, panel_id: int | None = None) -> Ticket:
+        ticket = Ticket(guild_id=guild_id, channel_id=channel_id, user_id=user_id, panel_id=panel_id, status="open")
         self.session.add(ticket)
         await self.session.flush()
         return ticket
@@ -84,8 +91,28 @@ class TicketRepository:
         result = await self.session.execute(query)
         return result.scalar_one_or_none()
 
-    async def close_ticket(self, ticket: Ticket) -> Ticket:
+    async def set_ticket_status(self, ticket: Ticket, status: str) -> Ticket:
+        ticket.status = status
+        await self.session.flush()
+        return ticket
+
+    async def claim_ticket(self, ticket: Ticket, moderator_user_id: int) -> Ticket:
+        ticket.status = "claimed"
+        ticket.claimed_by_user_id = moderator_user_id
+        ticket.claimed_at = datetime.now(timezone.utc)
+        await self.session.flush()
+        return ticket
+
+    async def close_ticket(
+        self,
+        ticket: Ticket,
+        *,
+        closed_by_user_id: int | None = None,
+        transcript_path: str | None = None,
+    ) -> Ticket:
         ticket.status = "closed"
+        ticket.closed_by_user_id = closed_by_user_id
+        ticket.transcript_path = transcript_path
         ticket.closed_at = datetime.now(timezone.utc)
         await self.session.flush()
         return ticket

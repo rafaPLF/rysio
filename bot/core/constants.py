@@ -11,4 +11,5 @@ INITIAL_EXTENSIONS = (
     "bot.modules.lfg.cog",
     "bot.modules.premium.cog",
     "bot.modules.notifications.cog",
+    "bot.modules.moderation.cog",
 )

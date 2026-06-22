@@ -29,6 +29,8 @@ class NotificationService:
         self._session: aiohttp.ClientSession | None = None
         self._twitch_token: str | None = None
         self._twitch_token_expires_at: float = 0.0
+        self._kick_token: str | None = None
+        self._kick_token_expires_at: float = 0.0
 
     async def startup(self) -> None:
         if self._session is None:
@@ -47,11 +49,16 @@ class NotificationService:
         platform: str,
         target: str,
         announce_channel_id: int,
-    ) -> str | None:
+        mention_role_id: int | None,
+    ) -> tuple[str | None, bool]:
         normalized_platform = self.normalize_platform(platform)
         normalized_target = self.normalize_target(normalized_platform, target)
         await bot.guild_config.ensure_guild(bot.database, guild_id)  # type: ignore[attr-defined]
         initial_content = await self.fetch_latest_content(bot, normalized_platform, normalized_target)
+        initial_content_found = initial_content is not None
+        initial_last_seen_content_id = (
+            initial_content.content_id if initial_content and normalized_platform == "youtube" else None
+        )
 
         async with bot.database.session() as session:  # type: ignore[attr-defined]
             repo = NotificationSubscriptionRepository(session)
@@ -60,9 +67,10 @@ class NotificationService:
                 platform=normalized_platform,
                 target=normalized_target,
                 announce_channel_id=announce_channel_id,
-                last_seen_content_id=initial_content.content_id if initial_content else None,
+                mention_role_id=mention_role_id,
+                last_seen_content_id=initial_last_seen_content_id,
             )
-        return subscription.last_seen_content_id
+        return subscription.last_seen_content_id, initial_content_found
 
     async def remove_subscription(self, bot: discord.Client, *, guild_id: int, platform: str, target: str) -> int:
         async with bot.database.session() as session:  # type: ignore[attr-defined]
@@ -110,7 +118,9 @@ class NotificationService:
 
             embed = self._build_announcement_embed(content)
             try:
-                await channel.send(embed=embed)
+                message_content = self._build_announcement_message(subscription, content, guild)
+                allowed_mentions = discord.AllowedMentions(roles=True)
+                await channel.send(content=message_content, embed=embed, allowed_mentions=allowed_mentions)
             except discord.HTTPException:
                 continue
 
@@ -148,7 +158,7 @@ class NotificationService:
         if platform == "twitch":
             return await self._fetch_twitch_latest(bot, target)
         if platform == "kick":
-            return await self._fetch_kick_latest(target)
+            return await self._fetch_kick_latest(bot, target)
         return None
 
     async def _fetch_youtube_latest(self, channel_id: str) -> NotificationContent | None:
@@ -217,27 +227,30 @@ class NotificationService:
             platform_label="Twitch",
         )
 
-    async def _fetch_kick_latest(self, slug: str) -> NotificationContent | None:
+    async def _fetch_kick_latest(self, bot: discord.Client, slug: str) -> NotificationContent | None:
         assert self._session is not None
-        payloads: list[dict[str, Any]] = []
-        for url in (
-            f"https://kick.com/api/v2/channels/{slug}",
-            f"https://kick.com/api/v1/channels/{slug}",
-        ):
-            async with self._session.get(url) as response:
-                if response.status >= 400:
-                    continue
-                try:
-                    payload = await response.json()
-                except aiohttp.ContentTypeError:
-                    continue
-                if isinstance(payload, dict):
-                    payloads.append(payload)
+        token = await self._get_kick_app_token(bot)
+        if token is None:
+            return None
 
-        for payload in payloads:
-            content = self._parse_kick_payload(slug, payload)
-            if content is not None:
-                return content
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Accept": "application/json",
+        }
+        async with self._session.get(
+            "https://api.kick.com/public/v1/channels",
+            params={"slug": slug},
+            headers=headers,
+        ) as response:
+            if response.status >= 400:
+                return None
+            payload = await response.json()
+
+        data = payload.get("data")
+        if isinstance(data, list) and data:
+            channel = data[0]
+            if isinstance(channel, dict):
+                return self._parse_kick_channel_payload(slug, channel)
         return None
 
     async def _get_twitch_app_token(self, bot: discord.Client) -> str | None:
@@ -270,6 +283,37 @@ class NotificationService:
         self._twitch_token_expires_at = time.time() + max(60, expires_in - 120)
         return self._twitch_token
 
+    async def _get_kick_app_token(self, bot: discord.Client) -> str | None:
+        if time.time() < self._kick_token_expires_at and self._kick_token:
+            return self._kick_token
+
+        client_id = bot.settings.kick_client_id  # type: ignore[attr-defined]
+        client_secret = bot.settings.kick_client_secret  # type: ignore[attr-defined]
+        if not client_id or not client_secret or self._session is None:
+            return None
+
+        async with self._session.post(
+            "https://id.kick.com/oauth/token",
+            data={
+                "grant_type": "client_credentials",
+                "client_id": client_id,
+                "client_secret": client_secret,
+            },
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        ) as response:
+            if response.status >= 400:
+                return None
+            payload = await response.json()
+
+        access_token = payload.get("access_token")
+        expires_in = int(payload.get("expires_in") or 0)
+        if not access_token:
+            return None
+
+        self._kick_token = str(access_token)
+        self._kick_token_expires_at = time.time() + max(60, expires_in - 120)
+        return self._kick_token
+
     def _build_announcement_embed(self, content: NotificationContent) -> discord.Embed:
         embed = discord.Embed(
             title=content.title,
@@ -284,8 +328,22 @@ class NotificationService:
             embed.set_image(url=content.thumbnail_url)
         return embed
 
-    def _parse_kick_payload(self, slug: str, payload: dict[str, Any]) -> NotificationContent | None:
-        livestream = payload.get("livestream") or payload.get("stream") or payload.get("broadcast")
+    def _build_announcement_message(
+        self,
+        subscription,
+        content: NotificationContent,
+        guild: discord.Guild,
+    ) -> str:
+        prefix = ""
+        mention_role_id = getattr(subscription, "mention_role_id", None)
+        if mention_role_id:
+            role = guild.get_role(mention_role_id)
+            if role is not None:
+                prefix = f"{role.mention} "
+        return f"{prefix}{content.creator_name} ist jetzt live!"
+
+    def _parse_kick_channel_payload(self, slug: str, payload: dict[str, Any]) -> NotificationContent | None:
+        livestream = payload.get("stream") or payload.get("livestream") or payload.get("broadcast")
         if not isinstance(livestream, dict):
             return None
 
@@ -293,20 +351,18 @@ class NotificationService:
             return None
 
         creator_name = self._pick_first_string(
-            payload.get("user", {}).get("username") if isinstance(payload.get("user"), dict) else None,
-            payload.get("user", {}).get("name") if isinstance(payload.get("user"), dict) else None,
+            payload.get("slug"),
             payload.get("slug"),
             slug,
         )
         title = self._pick_first_string(
-            livestream.get("session_title"),
+            payload.get("stream_title"),
             livestream.get("title"),
-            livestream.get("slug"),
+            livestream.get("session_title"),
             f"{slug} ist live auf Kick",
         )
         content_id = self._pick_first_string(
             livestream.get("id"),
-            livestream.get("slug"),
             livestream.get("created_at"),
             livestream.get("start_time"),
             livestream.get("started_at"),
@@ -324,7 +380,10 @@ class NotificationService:
             title=title,
             url=f"https://kick.com/{slug}",
             creator_name=creator_name,
-            description="Kick Livestream gestartet.",
+            description=self._pick_first_string(
+                payload.get("category", {}).get("name") if isinstance(payload.get("category"), dict) else None,
+                "Kick Livestream gestartet.",
+            ),
             thumbnail_url=thumbnail,
             platform_label="Kick",
         )

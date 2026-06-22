@@ -199,7 +199,7 @@ def build_help_embed(bot: commands.Bot, language: str) -> discord.Embed:
     )
     embed.add_field(
         name="Tickets",
-        value="`/tickets status`\n`/tickets panel`",
+        value="`/tickets status`\n`/tickets panel`\n`/tickets note`\n`/tickets info`\n`/tickets panels-reset`",
         inline=False,
     )
     embed.add_field(
@@ -225,6 +225,16 @@ def build_help_embed(bot: commands.Bot, language: str) -> discord.Embed:
     embed.add_field(
         name="Logs",
         value="`/logs status`\n`/logs setup`\n`/logs disable`",
+        inline=False,
+    )
+    embed.add_field(
+        name="Notifications",
+        value="`/notifications add`\n`/notifications remove`\n`/notifications list`\n`/notifications check`",
+        inline=False,
+    )
+    embed.add_field(
+        name="Moderation",
+        value="`/mod setrole`\n`/mod roles`\n`/mod warn`\n`/mod timeout`\n`/mod kick`\n`/mod ban`\n`/mod history`",
         inline=False,
     )
     embed.add_field(

@@ -1,10 +1,11 @@
 {
-  "version": "0.4.0",
-  "title": "Reaction Roles und Join to Create",
-  "summary": "Rysio hat jetzt neue Community-Features und eine bessere Admin-Verwaltung.",
+  "version": "0.5.0",
+  "title": "Panel, Discord Login und Stream-Benachrichtigungen",
+  "summary": "Rysio hat jetzt ein erstes Web-Panel, Discord OAuth Login und Benachrichtigungen fuer Twitch, Kick und YouTube.",
   "highlights": [
-    "Reaction-Role-Panels koennen erstellt und ueber eine interaktive UI verwaltet werden.",
-    "Join to Create Voice kann jetzt temporaere Sprachkanaele automatisch erstellen und wieder loeschen.",
-    "Mehrere Setup- und Statusbefehle wurden weiter aufgeraeumt und verbessert."
+    "Ein erstes Web-Panel ist vorbereitet und kann sich per Discord Login mit dem Bot verbinden.",
+    "Stream- und Upload-Benachrichtigungen fuer Twitch, Kick und YouTube koennen pro Server eingerichtet werden.",
+    "Benachrichtigungen unterstuetzen jetzt optional einen Rollen-Ping direkt vor dem Live-Hinweis.",
+    "Die API- und Panel-Basis ist so aufgebaut, dass spaetere echte Dashboard-Funktionen leichter folgen koennen."
   ]
 }

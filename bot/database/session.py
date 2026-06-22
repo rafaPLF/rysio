@@ -7,7 +7,7 @@ from sqlalchemy import inspect, text
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 
 from bot.database.base import Base
-from bot.database.models import AuditLog, Guild, GuildSettings, LFGPost, NotificationSubscription, PremiumSubscription, ReactionRoleEntry, ReactionRolePanel, TempVoiceChannel, Ticket, TicketPanel, VerificationSettings  # noqa: F401
+from bot.database.models import AuditLog, Guild, GuildSettings, LFGPost, ModerationCase, NotificationSubscription, PremiumSubscription, ReactionRoleEntry, ReactionRolePanel, TempVoiceChannel, Ticket, TicketNote, TicketPanel, VerificationSettings  # noqa: F401
 
 
 class DatabaseSessionManager:
@@ -72,3 +72,30 @@ class DatabaseSessionManager:
             connection.execute(text("ALTER TABLE guild_settings ADD COLUMN join_to_create_channel_id BIGINT"))
         if "join_to_create_category_id" not in guild_settings_columns:
             connection.execute(text("ALTER TABLE guild_settings ADD COLUMN join_to_create_category_id BIGINT"))
+        if "mod_role_ids_json" not in guild_settings_columns:
+            connection.execute(text("ALTER TABLE guild_settings ADD COLUMN mod_role_ids_json TEXT"))
+
+        if "notification_subscriptions" not in tables:
+            return
+
+        notification_columns = {column["name"] for column in inspector.get_columns("notification_subscriptions")}
+        if "mention_role_id" not in notification_columns:
+            connection.execute(text("ALTER TABLE notification_subscriptions ADD COLUMN mention_role_id BIGINT"))
+
+        if "tickets" in tables:
+            ticket_columns = {column["name"] for column in inspector.get_columns("tickets")}
+            if "panel_id" not in ticket_columns:
+                connection.execute(text("ALTER TABLE tickets ADD COLUMN panel_id INTEGER"))
+            if "claimed_by_user_id" not in ticket_columns:
+                connection.execute(text("ALTER TABLE tickets ADD COLUMN claimed_by_user_id BIGINT"))
+            if "claimed_at" not in ticket_columns:
+                connection.execute(text("ALTER TABLE tickets ADD COLUMN claimed_at TIMESTAMP"))
+            if "closed_by_user_id" not in ticket_columns:
+                connection.execute(text("ALTER TABLE tickets ADD COLUMN closed_by_user_id BIGINT"))
+            if "transcript_path" not in ticket_columns:
+                connection.execute(text("ALTER TABLE tickets ADD COLUMN transcript_path VARCHAR(500)"))
+
+        if "ticket_panels" in tables:
+            ticket_panel_columns = {column["name"] for column in inspector.get_columns("ticket_panels")}
+            if "welcome_message" not in ticket_panel_columns:
+                connection.execute(text("ALTER TABLE ticket_panels ADD COLUMN welcome_message TEXT"))

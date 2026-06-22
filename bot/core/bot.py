@@ -58,6 +58,7 @@ class DCBot(commands.Bot):
         self.owner_control = owner_control
         self.web_api = WebApiServer(settings, database, bot=self)
         self._patch_notes_checked = False
+        self._guild_commands_synced = False
 
     async def setup_hook(self) -> None:
         await self.database.connect()
@@ -68,10 +69,15 @@ class DCBot(commands.Bot):
         await self.tickets.restore_views(self)
         await self.verification.restore_views(self)
         await self.tree.sync()
-        logger.info("Application commands synced")
+        logger.info("Global application commands synced")
 
     async def on_ready(self) -> None:
         logger.info(self.localization.translate("bot.ready", user=str(self.user)))
+        if not self._guild_commands_synced:
+            self._guild_commands_synced = True
+            for guild in self.guilds:
+                await self.tree.sync(guild=guild)
+            logger.info("Guild application commands synced")
         if not self._patch_notes_checked:
             self._patch_notes_checked = True
             await self.patch_notes.publish_for_all_guilds(self)

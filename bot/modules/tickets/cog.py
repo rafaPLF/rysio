@@ -8,7 +8,7 @@ from bot.database.repositories.premium_repo import PremiumRepository
 from bot.database.repositories.ticket_repo import TicketRepository
 from bot.modules.tickets.service import TicketService
 from bot.modules.tickets.views import TicketCreateView
-from bot.utils.access import can_manage_guild, has_owner_bypass
+from bot.utils.access import can_manage_guild, can_use_moderation, has_owner_bypass
 
 
 class TicketsGroup(app_commands.Group):
@@ -35,6 +35,7 @@ class TicketsGroup(app_commands.Group):
         description_text="Kurze Beschreibung fuer Nutzer",
         category="Kategorie fuer neue Ticket-Channels",
         support_role="Support-Rolle mit Zugriff auf Tickets",
+        welcome_message="Optionale erste Auto-Nachricht im Ticket",
     )
     async def panel(
         self,
@@ -43,6 +44,7 @@ class TicketsGroup(app_commands.Group):
         description_text: str,
         category: discord.CategoryChannel | None = None,
         support_role: discord.Role | None = None,
+        welcome_message: str | None = None,
     ) -> None:
         if interaction.guild is None or interaction.channel is None:
             await interaction.response.send_message("Das geht nur in einem Server.", ephemeral=True)
@@ -111,6 +113,7 @@ class TicketsGroup(app_commands.Group):
                 message_id=message.id,
                 category_id=category.id if category else None,
                 support_role_id=support_role.id if support_role else None,
+                welcome_message=welcome_message.strip() if welcome_message else None,
             )
 
         interaction.client.add_view(TicketCreateView(), message_id=message.id)  # type: ignore[attr-defined]
@@ -120,6 +123,58 @@ class TicketsGroup(app_commands.Group):
             channel=interaction.channel.mention,
         )
         await interaction.followup.send(response, ephemeral=True)
+
+    @app_commands.command(name="note", description="Speichert eine interne Team-Notiz im aktuellen Ticket.")
+    async def note(self, interaction: discord.Interaction, note_text: str) -> None:
+        if interaction.guild is None or not isinstance(interaction.channel, discord.TextChannel):
+            await interaction.response.send_message("Das geht nur in einem Ticket-Channel.", ephemeral=True)
+            return
+        if not await can_use_moderation(interaction.client, interaction.user, interaction.guild.id):
+            await interaction.response.send_message("Dafuer brauchst du Moderations-Zugriff.", ephemeral=True)
+            return
+
+        ticket = await self.ticket_service.add_note(interaction.client, interaction.channel, interaction.user, note_text)
+        if ticket is None:
+            await interaction.response.send_message("In diesem Channel wurde kein Ticket gefunden.", ephemeral=True)
+            return
+        await interaction.response.send_message("Team-Notiz gespeichert.", ephemeral=True)
+
+    @app_commands.command(name="info", description="Zeigt Status, Claim und Notizen des aktuellen Tickets.")
+    async def info(self, interaction: discord.Interaction) -> None:
+        if interaction.guild is None or not isinstance(interaction.channel, discord.TextChannel):
+            await interaction.response.send_message("Das geht nur in einem Ticket-Channel.", ephemeral=True)
+            return
+        if not await can_use_moderation(interaction.client, interaction.user, interaction.guild.id):
+            await interaction.response.send_message("Dafuer brauchst du Moderations-Zugriff.", ephemeral=True)
+            return
+
+        ticket, notes = await self.ticket_service.list_notes(interaction.client, interaction.channel, limit=5)
+        if ticket is None:
+            await interaction.response.send_message("In diesem Channel wurde kein Ticket gefunden.", ephemeral=True)
+            return
+
+        embed = discord.Embed(title=f"Ticket #{ticket.id}", color=discord.Color.blurple())
+        embed.add_field(name="Status", value=f"`{ticket.status}`", inline=True)
+        embed.add_field(
+            name="Claimed By",
+            value=f"<@{ticket.claimed_by_user_id}>" if ticket.claimed_by_user_id else "-",
+            inline=True,
+        )
+        embed.add_field(
+            name="Transcript",
+            value=ticket.transcript_path or "-",
+            inline=False,
+        )
+        if notes:
+            embed.add_field(
+                name="Letzte Team-Notizen",
+                value="\n".join(
+                    f"- `{note.author_username}`: {note.note_text[:120]}"
+                    for note in notes
+                ),
+                inline=False,
+            )
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @app_commands.command(name="panels-reset", description="Loescht alle gespeicherten Ticket-Panels fuer diesen Server.")
     async def panels_reset(self, interaction: discord.Interaction) -> None:
@@ -171,8 +226,7 @@ class TicketsGroup(app_commands.Group):
 class TicketsCog(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
-        self.service = TicketService()
-        self.bot.tree.add_command(TicketsGroup(self.service))
+        self.bot.tree.add_command(TicketsGroup(bot.tickets))  # type: ignore[attr-defined]
 
 
 async def setup(bot: commands.Bot) -> None:

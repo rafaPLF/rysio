@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import discord
 
+from bot.utils.access import can_manage_guild, can_use_moderation
+
 
 class TicketCreateView(discord.ui.View):
     def __init__(self) -> None:
@@ -73,14 +75,15 @@ class TicketCreateView(discord.ui.View):
 
         async with interaction.client.database.session() as session:  # type: ignore[attr-defined]
             repo = TicketRepository(session)
-            await repo.create_ticket(interaction.guild.id, ticket_channel.id, interaction.user.id)
+            ticket = await repo.create_ticket(interaction.guild.id, ticket_channel.id, interaction.user.id, panel.id if panel else None)
 
-        content = interaction.client.localization.translate(  # type: ignore[attr-defined]
+        content = panel.welcome_message if panel and panel.welcome_message else interaction.client.localization.translate(  # type: ignore[attr-defined]
             "tickets.created_channel_message",
             language=language,
             user=interaction.user.mention,
         )
-        await ticket_channel.send(content, view=TicketCloseView())
+        auto_status = f"\n\nStatus: `open`\nTicket-ID: `{ticket.id}`"
+        await ticket_channel.send(content + auto_status, view=TicketManageView())
 
         response = interaction.client.localization.translate(  # type: ignore[attr-defined]
             "tickets.created_success",
@@ -90,35 +93,72 @@ class TicketCreateView(discord.ui.View):
         await interaction.response.send_message(response, ephemeral=True)
 
 
-class TicketCloseView(discord.ui.View):
+class TicketManageView(discord.ui.View):
     def __init__(self) -> None:
         super().__init__(timeout=None)
 
+    @discord.ui.button(label="Claim", style=discord.ButtonStyle.blurple, custom_id="tickets:claim")
+    async def claim_ticket(self, interaction: discord.Interaction, _: discord.ui.Button) -> None:
+        if interaction.guild is None or not isinstance(interaction.channel, discord.TextChannel):
+            await interaction.response.send_message("Das geht nur in einem Server.", ephemeral=True)
+            return
+        if not await can_use_moderation(interaction.client, interaction.user, interaction.guild.id):
+            await interaction.response.send_message("Dafuer brauchst du Moderations-Zugriff.", ephemeral=True)
+            return
+
+        ticket_service = interaction.client.tickets  # type: ignore[attr-defined]
+        ticket, error = await ticket_service.claim_ticket(interaction.client, interaction.channel, interaction.user)
+        if error:
+            await interaction.response.send_message(error, ephemeral=True)
+            return
+
+        await interaction.response.send_message(
+            f"Ticket uebernommen von {interaction.user.mention}. Status: `claimed`",
+            ephemeral=False,
+        )
+
+    @discord.ui.button(label="Wartet auf User", style=discord.ButtonStyle.gray, custom_id="tickets:waiting_user")
+    async def waiting_user(self, interaction: discord.Interaction, _: discord.ui.Button) -> None:
+        if interaction.guild is None or not isinstance(interaction.channel, discord.TextChannel):
+            await interaction.response.send_message("Das geht nur in einem Server.", ephemeral=True)
+            return
+        if not await can_use_moderation(interaction.client, interaction.user, interaction.guild.id):
+            await interaction.response.send_message("Dafuer brauchst du Moderations-Zugriff.", ephemeral=True)
+            return
+
+        ticket_service = interaction.client.tickets  # type: ignore[attr-defined]
+        ticket = await ticket_service.set_waiting_user(interaction.client, interaction.channel)
+        if ticket is None:
+            await interaction.response.send_message("Ticket nicht gefunden.", ephemeral=True)
+            return
+
+        await interaction.response.send_message(
+            "Ticket-Status auf `waiting_user` gesetzt.",
+            ephemeral=False,
+        )
+
     @discord.ui.button(label="Ticket schliessen", style=discord.ButtonStyle.red, custom_id="tickets:close")
     async def close_ticket(self, interaction: discord.Interaction, _: discord.ui.Button) -> None:
-        from bot.database.repositories.ticket_repo import TicketRepository
-
-        if interaction.guild is None or interaction.channel is None:
+        if interaction.guild is None or not isinstance(interaction.channel, discord.TextChannel):
             await interaction.response.send_message("Das geht nur in einem Server.", ephemeral=True)
+            return
+        if not can_manage_guild(interaction.client, interaction.user) and not await can_use_moderation(interaction.client, interaction.user, interaction.guild.id):
+            await interaction.response.send_message("Dafuer brauchst du Moderations-Zugriff.", ephemeral=True)
             return
 
         language = await interaction.client.guild_config.get_language(  # type: ignore[attr-defined]
             interaction.client.database,
             interaction.guild.id,
         )
-
-        async with interaction.client.database.session() as session:  # type: ignore[attr-defined]
-            repo = TicketRepository(session)
-            ticket = await repo.get_ticket_by_channel(interaction.channel.id)
-            if ticket is None or ticket.status != "open":
-                message = interaction.client.localization.translate("tickets.not_found", language=language)  # type: ignore[attr-defined]
-                await interaction.response.send_message(message, ephemeral=True)
-                return
-
-            await repo.close_ticket(ticket)
+        ticket_service = interaction.client.tickets  # type: ignore[attr-defined]
+        ticket, transcript_path = await ticket_service.close_ticket(interaction.client, interaction.channel, interaction.user)
+        if ticket is None:
+            message = interaction.client.localization.translate("tickets.not_found", language=language)  # type: ignore[attr-defined]
+            await interaction.response.send_message(message, ephemeral=True)
+            return
 
         await interaction.response.send_message(
-            interaction.client.localization.translate("tickets.closing", language=language),  # type: ignore[attr-defined]
-            ephemeral=True,
+            f"{interaction.client.localization.translate('tickets.closing', language=language)}\nTranscript: `{transcript_path}`",  # type: ignore[attr-defined]
+            ephemeral=False,
         )
         await interaction.channel.delete(reason=f"Ticket closed by {interaction.user}")

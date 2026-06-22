@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 from bot.database.repositories.guild_repo import GuildRepository
 from bot.database.session import DatabaseSessionManager
 
@@ -114,3 +116,32 @@ class GuildConfigService:
         async with database.session() as session:
             repo = GuildRepository(session)
             await repo.set_logs(guild_id, enabled, channel_id, self.default_language)
+
+    async def get_mod_role_ids(self, database: DatabaseSessionManager, guild_id: int) -> list[int]:
+        settings = await self.get_settings(database, guild_id)
+        if settings is None or not settings.mod_role_ids_json:
+            return []
+        try:
+            raw_ids = json.loads(settings.mod_role_ids_json)
+        except json.JSONDecodeError:
+            return []
+        if not isinstance(raw_ids, list):
+            return []
+        result: list[int] = []
+        for value in raw_ids:
+            try:
+                result.append(int(value))
+            except (TypeError, ValueError):
+                continue
+        return result
+
+    async def set_mod_role_ids(
+        self,
+        database: DatabaseSessionManager,
+        guild_id: int,
+        role_ids: list[int],
+    ) -> None:
+        async with database.session() as session:
+            repo = GuildRepository(session)
+            serialized = json.dumps(sorted(set(role_ids)), ensure_ascii=True) if role_ids else None
+            await repo.set_mod_roles(guild_id, serialized, self.default_language)

@@ -20,6 +20,7 @@ class NotificationSubscription(Base):
     platform: Mapped[str] = mapped_column(String(16), index=True)
     target: Mapped[str] = mapped_column(String(255), index=True)
     announce_channel_id: Mapped[int] = mapped_column(BigInteger)
+    mention_role_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     last_seen_content_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

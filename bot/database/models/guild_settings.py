@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from sqlalchemy import BigInteger, Boolean, ForeignKey, String
+from sqlalchemy import BigInteger, Boolean, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from bot.database.base import Base
@@ -24,5 +24,6 @@ class GuildSettings(Base):
     join_to_create_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     join_to_create_channel_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     join_to_create_category_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    mod_role_ids_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     verification_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     ticket_enabled: Mapped[bool] = mapped_column(Boolean, default=False)

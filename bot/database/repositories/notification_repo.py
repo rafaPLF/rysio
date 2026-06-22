@@ -17,6 +17,7 @@ class NotificationSubscriptionRepository:
         platform: str,
         target: str,
         announce_channel_id: int,
+        mention_role_id: int | None,
         last_seen_content_id: str | None,
     ) -> NotificationSubscription:
         existing = await self.get_by_target(guild_id=guild_id, platform=platform, target=target)
@@ -26,12 +27,14 @@ class NotificationSubscriptionRepository:
                 platform=platform,
                 target=target,
                 announce_channel_id=announce_channel_id,
+                mention_role_id=mention_role_id,
                 last_seen_content_id=last_seen_content_id,
                 enabled=True,
             )
             self.session.add(existing)
         else:
             existing.announce_channel_id = announce_channel_id
+            existing.mention_role_id = mention_role_id
             existing.enabled = True
             if last_seen_content_id is not None:
                 existing.last_seen_content_id = last_seen_content_id

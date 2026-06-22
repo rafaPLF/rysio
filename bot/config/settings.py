@@ -20,6 +20,8 @@ class Settings:
     panel_public_url: str = ""
     twitch_client_id: str = ""
     twitch_client_secret: str = ""
+    kick_client_id: str = ""
+    kick_client_secret: str = ""
     bot_prefix: str = "!"
     default_language: str = "de"
     log_level: str = "INFO"
@@ -64,6 +66,8 @@ def get_settings() -> Settings:
         panel_public_url=os.getenv("PANEL_PUBLIC_URL", "").strip(),
         twitch_client_id=os.getenv("TWITCH_CLIENT_ID", "").strip(),
         twitch_client_secret=os.getenv("TWITCH_CLIENT_SECRET", "").strip(),
+        kick_client_id=os.getenv("KICK_CLIENT_ID", "").strip(),
+        kick_client_secret=os.getenv("KICK_CLIENT_SECRET", "").strip(),
         bot_prefix=os.getenv("BOT_PREFIX", "!").strip() or "!",
         default_language=os.getenv("DEFAULT_LANGUAGE", "de").strip() or "de",
         log_level=os.getenv("LOG_LEVEL", "INFO").strip() or "INFO",
