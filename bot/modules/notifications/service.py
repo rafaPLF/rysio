@@ -50,7 +50,7 @@ class NotificationService:
         target: str,
         announce_channel_id: int,
         mention_role_id: int | None,
-    ) -> tuple[str | None, bool]:
+    ):
         normalized_platform = self.normalize_platform(platform)
         normalized_target = self.normalize_target(normalized_platform, target)
         await bot.guild_config.ensure_guild(bot.database, guild_id)  # type: ignore[attr-defined]
@@ -70,7 +70,7 @@ class NotificationService:
                 mention_role_id=mention_role_id,
                 last_seen_content_id=initial_last_seen_content_id,
             )
-        return subscription.last_seen_content_id, initial_content_found
+        return subscription, initial_content_found
 
     async def remove_subscription(self, bot: discord.Client, *, guild_id: int, platform: str, target: str) -> int:
         async with bot.database.session() as session:  # type: ignore[attr-defined]
@@ -96,7 +96,7 @@ class NotificationService:
         target: str,
         announce_channel_id: int,
         mention_role_id: int | None,
-    ) -> tuple[object | None, str | None, bool]:
+    ):
         normalized_platform = self.normalize_platform(platform)
         normalized_target = self.normalize_target(normalized_platform, target)
         initial_content = await self.fetch_latest_content(bot, normalized_platform, normalized_target)
@@ -121,7 +121,7 @@ class NotificationService:
             if initial_last_seen_content_id is not None:
                 subscription.last_seen_content_id = initial_last_seen_content_id
                 await session.flush()
-        return subscription, getattr(subscription, "last_seen_content_id", None), initial_content_found
+        return subscription, initial_content_found
 
     async def delete_subscription_by_id(self, bot: discord.Client, *, guild_id: int, subscription_id: int) -> int:
         async with bot.database.session() as session:  # type: ignore[attr-defined]

@@ -44,7 +44,7 @@ class NotificationsGroup(app_commands.Group):
             return
 
         try:
-            last_seen_id, initial_content_found = await self._service.add_subscription(
+            subscription, initial_content_found = await self._service.add_subscription(
                 interaction.client,
                 guild_id=interaction.guild.id,
                 platform=platform.value,
@@ -60,7 +60,7 @@ class NotificationsGroup(app_commands.Group):
         role_suffix = f" Rollen-Ping: {mention_role.mention}." if mention_role else ""
         if platform.value == "youtube":
             suffix = "Es wird erst ab dem naechsten neuen Upload gepostet."
-            if last_seen_id is None:
+            if subscription.last_seen_content_id is None:
                 suffix = "Aktuell wurde noch kein letzter Inhalt gefunden. Der erste Fund wird direkt gepostet."
         else:
             if initial_content_found:

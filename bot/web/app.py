@@ -419,7 +419,7 @@ async def create_notification_subscription(request: web.Request) -> web.Response
             return web.json_response({"error": "mention_role_not_found"}, status=404)
 
     try:
-        _, _, initial_content_found = await service.add_subscription(
+        subscription, initial_content_found = await service.add_subscription(
             bot,
             guild_id=guild.id,
             platform=platform,
@@ -429,20 +429,6 @@ async def create_notification_subscription(request: web.Request) -> web.Response
         )
     except ValueError:
         return web.json_response({"error": "unsupported_platform"}, status=400)
-
-    subscriptions = await service.list_for_guild(bot, guild.id)
-    normalized_platform = service.normalize_platform(platform)
-    normalized_target = service.normalize_target(normalized_platform, target)
-    subscription = next(
-        (
-            entry
-            for entry in subscriptions
-            if entry.platform == normalized_platform and entry.target == normalized_target
-        ),
-        None,
-    )
-    if subscription is None:
-        return web.json_response({"error": "subscription_save_failed"}, status=500)
 
     return web.json_response(
         {
@@ -499,7 +485,7 @@ async def update_notification_subscription(request: web.Request) -> web.Response
             return web.json_response({"error": "mention_role_not_found"}, status=404)
 
     try:
-        subscription, _, initial_content_found = await service.update_subscription(
+        subscription, initial_content_found = await service.update_subscription(
             bot,
             guild_id=guild.id,
             subscription_id=subscription_id,
