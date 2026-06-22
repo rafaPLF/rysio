@@ -278,6 +278,8 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
                 <button id="cancelNotificationEditButton" type="button" class="ghost">Bearbeiten abbrechen</button>
                 <button id="checkNotificationsButton" type="button" class="ghost">Jetzt pruefen</button>
               </div>
+              <p id="notificationStatusText" class="meta" style="margin-top:12px;">Bereit.</p>
+              <p id="notificationErrorText" class="error" hidden style="margin-top:8px;"></p>
             </section>
             <section class="card">
               <h3>Bestehende Notifications</h3>
@@ -407,6 +409,8 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
     const notificationFormHeading = document.getElementById("notificationFormHeading");
     const saveNotificationButton = document.getElementById("saveNotificationButton");
     const cancelNotificationEditButton = document.getElementById("cancelNotificationEditButton");
+    const notificationStatusText = document.getElementById("notificationStatusText");
+    const notificationErrorText = document.getElementById("notificationErrorText");
 
     let sessionToken = "";
     let currentOverview = null;
@@ -480,6 +484,16 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
       oauthErrorText.textContent = message;
     }}
 
+    function setNotificationError(message) {{
+      if (!message) {{
+        notificationErrorText.hidden = true;
+        notificationErrorText.textContent = "";
+        return;
+      }}
+      notificationErrorText.hidden = false;
+      notificationErrorText.textContent = message;
+    }}
+
     function resetTicketForm() {{
       editingPanelId = null;
       ticketFormHeading.textContent = "Neues Ticket-Panel erstellen";
@@ -500,6 +514,8 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
       notificationTargetInput.value = "";
       notificationChannelSelect.value = "";
       notificationMentionRoleSelect.value = "";
+      notificationStatusText.textContent = "Bereit.";
+      setNotificationError("");
     }}
 
     function fillTicketForm(panel) {{
@@ -525,6 +541,8 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
       notificationChannelSelect.value = subscription.announce_channel_id || "";
       notificationMentionRoleSelect.value = subscription.mention_role_id || "";
       statusText.textContent = `Bearbeitungsmodus fuer Notification #${{subscription.id}} aktiviert.`;
+      notificationStatusText.textContent = `Bearbeitungsmodus fuer Notification #${{subscription.id}} aktiviert.`;
+      setNotificationError("");
       window.scrollTo({{ top: 0, behavior: "smooth" }});
     }}
 
@@ -842,14 +860,23 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
         mention_role_id: notificationMentionRoleSelect.value,
       }};
 
-      if (!guildId) {{ setError("Bitte zuerst einen Discord Server auswaehlen."); return; }}
+      if (!guildId) {{
+        setError("Bitte zuerst einen Discord Server auswaehlen.");
+        setNotificationError("Bitte zuerst einen Discord Server auswaehlen.");
+        notificationStatusText.textContent = "Notification konnte nicht gespeichert werden.";
+        return;
+      }}
       if (!payload.platform || !payload.target || !payload.announce_channel_id) {{
         setError("Bitte Plattform, Target und Channel fuellen.");
+        setNotificationError("Bitte Plattform, Target und Channel fuellen.");
+        notificationStatusText.textContent = "Pflichtfelder fehlen.";
         return;
       }}
 
       setError("");
+      setNotificationError("");
       statusText.textContent = wasEditing ? "Notification wird aktualisiert..." : "Notification wird erstellt...";
+      notificationStatusText.textContent = wasEditing ? "Notification wird aktualisiert..." : "Notification wird erstellt...";
       try {{
         const endpoint = wasEditing
           ? `${{apiBaseUrl}}/api/guilds/${{guildId}}/notifications/${{editingNotificationId}}`
@@ -868,9 +895,12 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
         resetNotificationForm();
         await loadOverview();
         statusText.textContent = wasEditing ? "Notification gespeichert." : "Notification erstellt.";
+        notificationStatusText.textContent = wasEditing ? "Notification gespeichert." : "Notification erstellt.";
       }} catch (error) {{
         setError(`Notification fehlgeschlagen: ${{error.message}}`);
+        setNotificationError(`Notification fehlgeschlagen: ${{error.message}}`);
         statusText.textContent = "Notification konnte nicht gespeichert werden.";
+        notificationStatusText.textContent = "Notification konnte nicht gespeichert werden.";
       }}
     }}
 
@@ -879,7 +909,9 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
       const apiBaseUrl = normalizeBaseUrl(apiBaseUrlInput.value || DEFAULT_API_BASE_URL);
       if (!guildId || !subscriptionId) return;
       setError("");
+      setNotificationError("");
       statusText.textContent = "Notification wird geloescht...";
+      notificationStatusText.textContent = "Notification wird geloescht...";
       try {{
         const response = await fetch(`${{apiBaseUrl}}/api/guilds/${{guildId}}/notifications/${{subscriptionId}}`, {{
           method: "DELETE",
@@ -890,18 +922,28 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
         if (String(editingNotificationId) === String(subscriptionId)) resetNotificationForm();
         await loadOverview();
         statusText.textContent = "Notification geloescht.";
+        notificationStatusText.textContent = "Notification geloescht.";
       }} catch (error) {{
         setError(`Notification-Loeschen fehlgeschlagen: ${{error.message}}`);
+        setNotificationError(`Notification-Loeschen fehlgeschlagen: ${{error.message}}`);
         statusText.textContent = "Notification konnte nicht geloescht werden.";
+        notificationStatusText.textContent = "Notification konnte nicht geloescht werden.";
       }}
     }}
 
     async function checkNotificationsNow() {{
       const guildId = guildSelect.value;
       const apiBaseUrl = normalizeBaseUrl(apiBaseUrlInput.value || DEFAULT_API_BASE_URL);
-      if (!guildId) {{ setError("Bitte zuerst einen Discord Server auswaehlen."); return; }}
+      if (!guildId) {{
+        setError("Bitte zuerst einen Discord Server auswaehlen.");
+        setNotificationError("Bitte zuerst einen Discord Server auswaehlen.");
+        notificationStatusText.textContent = "Notification-Check konnte nicht gestartet werden.";
+        return;
+      }}
       setError("");
+      setNotificationError("");
       statusText.textContent = "Notifications werden jetzt manuell geprueft...";
+      notificationStatusText.textContent = "Notifications werden jetzt manuell geprueft...";
       try {{
         const response = await fetch(`${{apiBaseUrl}}/api/guilds/${{guildId}}/notifications/check`, {{
           method: "POST",
@@ -910,9 +952,12 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
         const body = await response.json();
         if (!response.ok) throw new Error(body.error || `HTTP ${{response.status}}`);
         statusText.textContent = `Notification-Check abgeschlossen. Geprueft: ${{body.processed ?? 0}}.`;
+        notificationStatusText.textContent = `Notification-Check abgeschlossen. Geprueft: ${{body.processed ?? 0}}.`;
       }} catch (error) {{
         setError(`Notification-Check fehlgeschlagen: ${{error.message}}`);
+        setNotificationError(`Notification-Check fehlgeschlagen: ${{error.message}}`);
         statusText.textContent = "Notification-Check fehlgeschlagen.";
+        notificationStatusText.textContent = "Notification-Check fehlgeschlagen.";
       }}
     }}
 
