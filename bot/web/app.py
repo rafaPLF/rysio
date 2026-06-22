@@ -105,6 +105,7 @@ async def _get_authorized_guild(request: web.Request) -> discord.Guild | None:
     return bot.get_guild(guild_id)
 
 
+@web.middleware
 async def auth_middleware(request: web.Request, handler):
     if request.method == "OPTIONS":
         return web.Response(status=204)
