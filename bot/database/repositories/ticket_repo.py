@@ -37,6 +37,8 @@ class TicketRepository:
         guild_id: int,
         channel_id: int,
         message_id: int,
+        title: str,
+        description_text: str,
         category_id: int | None,
         support_role_id: int | None,
         welcome_message: str | None,
@@ -45,11 +47,35 @@ class TicketRepository:
             guild_id=guild_id,
             channel_id=channel_id,
             message_id=message_id,
+            title=title,
+            description_text=description_text,
             category_id=category_id,
             support_role_id=support_role_id,
             welcome_message=welcome_message,
         )
         self.session.add(panel)
+        await self.session.flush()
+        return panel
+
+    async def update_panel(
+        self,
+        panel: TicketPanel,
+        *,
+        channel_id: int,
+        message_id: int,
+        title: str,
+        description_text: str,
+        category_id: int | None,
+        support_role_id: int | None,
+        welcome_message: str | None,
+    ) -> TicketPanel:
+        panel.channel_id = channel_id
+        panel.message_id = message_id
+        panel.title = title
+        panel.description_text = description_text
+        panel.category_id = category_id
+        panel.support_role_id = support_role_id
+        panel.welcome_message = welcome_message
         await self.session.flush()
         return panel
 
@@ -68,6 +94,14 @@ class TicketRepository:
 
     async def get_all_panels(self) -> list[TicketPanel]:
         query = select(TicketPanel)
+        result = await self.session.execute(query)
+        return list(result.scalars().all())
+
+    async def get_active_tickets_for_guild(self, guild_id: int) -> list[Ticket]:
+        query = select(Ticket).where(
+            Ticket.guild_id == guild_id,
+            Ticket.status.in_(["open", "claimed", "waiting_user"]),
+        )
         result = await self.session.execute(query)
         return list(result.scalars().all())
 
@@ -90,6 +124,9 @@ class TicketRepository:
         query = select(Ticket).where(Ticket.channel_id == channel_id)
         result = await self.session.execute(query)
         return result.scalar_one_or_none()
+
+    async def get_ticket_by_id(self, ticket_id: int) -> Ticket | None:
+        return await self.session.get(Ticket, ticket_id)
 
     async def set_ticket_status(self, ticket: Ticket, status: str) -> Ticket:
         ticket.status = status

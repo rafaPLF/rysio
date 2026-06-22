@@ -111,6 +111,8 @@ class TicketsGroup(app_commands.Group):
                 guild_id=interaction.guild.id,
                 channel_id=interaction.channel.id,
                 message_id=message.id,
+                title=title,
+                description_text=description_text,
                 category_id=category.id if category else None,
                 support_role_id=support_role.id if support_role else None,
                 welcome_message=welcome_message.strip() if welcome_message else None,

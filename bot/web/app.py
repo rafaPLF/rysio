@@ -8,9 +8,11 @@ from aiohttp import web
 
 from bot.database.repositories.audit_log_repo import AuditLogRepository
 from bot.database.repositories.guild_repo import GuildRepository
+from bot.database.repositories.ticket_note_repo import TicketNoteRepository
 from bot.database.repositories.ticket_repo import TicketRepository
 from bot.database.session import DatabaseSessionManager
 from bot.modules.tickets.views import TicketCreateView
+from bot.utils.access import has_owner_access
 from bot.web.oauth import (
     build_callback_redirect,
     build_login_url,
@@ -49,6 +51,16 @@ def _normalize_origin(value: str | None) -> str:
     return value.strip().rstrip("/").lower()
 
 
+def _session_user_id(request: web.Request) -> int | None:
+    session = request.get("panel_session")
+    if not session:
+        return None
+    try:
+        return int(session["user"]["id"])
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
 def _serialize_text_channel(channel: discord.TextChannel) -> dict[str, Any]:
     return {
         "id": str(channel.id),
@@ -75,6 +87,14 @@ def _serialize_role(role: discord.Role) -> dict[str, Any]:
     }
 
 
+def _display_name_for_member(member: discord.Member | None, fallback_id: int | None) -> str:
+    if member is not None:
+        return member.display_name
+    if fallback_id:
+        return f"User {fallback_id}"
+    return "Unbekannt"
+
+
 def _serialize_ticket_panel(panel, guild: discord.Guild) -> dict[str, Any]:
     channel = guild.get_channel(panel.channel_id)
     category = guild.get_channel(panel.category_id) if panel.category_id else None
@@ -84,12 +104,54 @@ def _serialize_ticket_panel(panel, guild: discord.Guild) -> dict[str, Any]:
         "channel_id": str(panel.channel_id),
         "channel_name": channel.name if isinstance(channel, discord.TextChannel) else f"#{panel.channel_id}",
         "message_id": str(panel.message_id),
+        "title": panel.title,
+        "description_text": panel.description_text,
         "category_id": str(panel.category_id) if panel.category_id else None,
         "category_name": category.name if isinstance(category, discord.CategoryChannel) else None,
         "support_role_id": str(panel.support_role_id) if panel.support_role_id else None,
         "support_role_name": support_role.name if support_role else None,
         "welcome_message": panel.welcome_message or "",
     }
+
+
+def _serialize_ticket(ticket, guild: discord.Guild, notes: list[Any]) -> dict[str, Any]:
+    channel = guild.get_channel(ticket.channel_id)
+    opener = guild.get_member(ticket.user_id)
+    claimer = guild.get_member(ticket.claimed_by_user_id) if ticket.claimed_by_user_id else None
+    return {
+        "id": ticket.id,
+        "channel_id": str(ticket.channel_id),
+        "channel_name": channel.name if isinstance(channel, discord.TextChannel) else f"ticket-{ticket.channel_id}",
+        "user_id": str(ticket.user_id),
+        "opener_name": _display_name_for_member(opener, ticket.user_id),
+        "status": ticket.status,
+        "panel_id": ticket.panel_id,
+        "claimed_by_user_id": str(ticket.claimed_by_user_id) if ticket.claimed_by_user_id else None,
+        "claimed_by_name": _display_name_for_member(claimer, ticket.claimed_by_user_id) if ticket.claimed_by_user_id else None,
+        "created_at": ticket.created_at.isoformat() if ticket.created_at else None,
+        "closed_at": ticket.closed_at.isoformat() if ticket.closed_at else None,
+        "transcript_path": ticket.transcript_path,
+        "notes": [
+            {
+                "id": note.id,
+                "author_user_id": str(note.author_user_id),
+                "author_username": note.author_username,
+                "note_text": note.note_text,
+                "created_at": note.created_at.isoformat() if note.created_at else None,
+            }
+            for note in notes
+        ],
+    }
+
+
+def _build_ticket_panel_embed(bot: discord.Client, *, language: str, title: str, description_text: str) -> discord.Embed:
+    embed = discord.Embed(title=title, description=description_text, color=discord.Color.blurple())
+    embed.add_field(
+        name=bot.localization.translate("tickets.panel_field_name", language=language),  # type: ignore[attr-defined]
+        value=bot.localization.translate("tickets.panel_field_value", language=language),  # type: ignore[attr-defined]
+        inline=False,
+    )
+    return embed
 
 
 async def _get_authorized_guild(request: web.Request) -> discord.Guild | None:
@@ -103,6 +165,59 @@ async def _get_authorized_guild(request: web.Request) -> discord.Guild | None:
         return None
 
     return bot.get_guild(guild_id)
+
+
+async def _get_authorized_member(request: web.Request, guild: discord.Guild) -> discord.Member | None:
+    user_id = _session_user_id(request)
+    if user_id is None:
+        return None
+
+    member = guild.get_member(user_id)
+    if member is not None:
+        return member
+
+    try:
+        return await guild.fetch_member(user_id)
+    except discord.HTTPException:
+        return None
+
+
+async def _session_can_manage_guild(request: web.Request, guild: discord.Guild) -> bool:
+    if request.get("panel_session") is None:
+        return True
+    user_id = _session_user_id(request)
+    if user_id is None:
+        return False
+    if has_owner_access(user_id):
+        return True
+    member = await _get_authorized_member(request, guild)
+    if member is None:
+        return False
+    return member.guild_permissions.administrator or member.guild_permissions.manage_guild
+
+
+async def _session_can_use_ticket_staff(request: web.Request, guild: discord.Guild) -> bool:
+    if request.get("panel_session") is None:
+        return True
+    user_id = _session_user_id(request)
+    if user_id is None:
+        return False
+    if has_owner_access(user_id):
+        return True
+
+    member = await _get_authorized_member(request, guild)
+    if member is None:
+        return False
+    if member.guild_permissions.administrator or member.guild_permissions.manage_guild:
+        return True
+
+    bot = request.app["bot"]
+    role_ids = await bot.guild_config.get_mod_role_ids(bot.database, guild.id)  # type: ignore[attr-defined]
+    return any(role.id in role_ids for role in member.roles)
+
+
+def _forbidden(message: str, *, status: int = 403) -> web.Response:
+    return web.json_response({"error": message}, status=status)
 
 
 @web.middleware
@@ -190,14 +305,21 @@ async def get_guild_logs(request: web.Request) -> web.Response:
 async def get_guild_overview(request: web.Request) -> web.Response:
     guild = await _get_authorized_guild(request)
     if guild is None:
-        return web.json_response({"error": "guild_access_denied"}, status=403)
+        return _forbidden("guild_access_denied")
 
     database: DatabaseSessionManager = request.app["database"]
     async with database.session() as session:
         guild_repo = GuildRepository(session)
         ticket_repo = TicketRepository(session)
+        note_repo = TicketNoteRepository(session)
         settings = await guild_repo.ensure_settings(guild.id)
         panels = await ticket_repo.get_panels_for_guild(guild.id)
+        active_tickets = await ticket_repo.get_active_tickets_for_guild(guild.id)
+
+        serialized_tickets = []
+        for ticket in active_tickets:
+            notes = await note_repo.list_for_ticket(ticket.id, limit=3)
+            serialized_tickets.append(_serialize_ticket(ticket, guild, notes))
 
     payload = {
         "guild": {
@@ -225,6 +347,7 @@ async def get_guild_overview(request: web.Request) -> web.Response:
             key=lambda item: (-item["position"], item["name"].lower()),
         ),
         "ticket_panels": [_serialize_ticket_panel(panel, guild) for panel in panels],
+        "active_tickets": serialized_tickets,
     }
     return web.json_response(payload)
 
@@ -232,7 +355,9 @@ async def get_guild_overview(request: web.Request) -> web.Response:
 async def create_ticket_panel(request: web.Request) -> web.Response:
     guild = await _get_authorized_guild(request)
     if guild is None:
-        return web.json_response({"error": "guild_access_denied"}, status=403)
+        return _forbidden("guild_access_denied")
+    if not await _session_can_manage_guild(request, guild):
+        return _forbidden("guild_manage_required")
 
     bot = request.app["bot"]
     if bot is None:
@@ -290,46 +415,150 @@ async def create_ticket_panel(request: web.Request) -> web.Response:
     if not (permissions.send_messages and permissions.embed_links):
         return web.json_response({"error": "missing_channel_permissions"}, status=400)
 
-    language = await bot.guild_config.get_language(bot.database, guild.id)
-    embed = discord.Embed(title=title, description=description_text, color=discord.Color.blurple())
-    embed.add_field(
-        name=bot.localization.translate("tickets.panel_field_name", language=language),
-        value=bot.localization.translate("tickets.panel_field_value", language=language),
-        inline=False,
-    )
-
+    language = await bot.guild_config.get_language(bot.database, guild.id)  # type: ignore[attr-defined]
+    embed = _build_ticket_panel_embed(bot, language=language, title=title, description_text=description_text)
     message = await channel.send(embed=embed, view=TicketCreateView())
 
     database: DatabaseSessionManager = request.app["database"]
     async with database.session() as session:
         guild_repo = GuildRepository(session)
         ticket_repo = TicketRepository(session)
-        await guild_repo.ensure_guild(guild.id, bot.guild_config.get_default_language())
+        await guild_repo.ensure_guild(guild.id, bot.guild_config.get_default_language())  # type: ignore[attr-defined]
         settings = await guild_repo.ensure_settings(guild.id)
         settings.ticket_enabled = True
         panel = await ticket_repo.create_panel(
             guild_id=guild.id,
             channel_id=channel.id,
             message_id=message.id,
+            title=title,
+            description_text=description_text,
             category_id=category.id if category else None,
             support_role_id=support_role.id if support_role else None,
             welcome_message=welcome_message or None,
         )
 
     bot.add_view(TicketCreateView(), message_id=message.id)
-    return web.json_response(
-        {
-            "created": True,
-            "panel": _serialize_ticket_panel(panel, guild),
-        },
-        status=201,
-    )
+    return web.json_response({"created": True, "panel": _serialize_ticket_panel(panel, guild)}, status=201)
+
+
+async def update_ticket_panel(request: web.Request) -> web.Response:
+    guild = await _get_authorized_guild(request)
+    if guild is None:
+        return _forbidden("guild_access_denied")
+    if not await _session_can_manage_guild(request, guild):
+        return _forbidden("guild_manage_required")
+
+    bot = request.app["bot"]
+    if bot is None:
+        return web.json_response({"error": "bot_unavailable"}, status=503)
+
+    panel_id = int(request.match_info["panel_id"])
+    try:
+        payload = await request.json()
+    except json.JSONDecodeError:
+        return web.json_response({"error": "invalid_json"}, status=400)
+
+    channel_id_raw = str(payload.get("channel_id", "")).strip()
+    title = str(payload.get("title", "")).strip()
+    description_text = str(payload.get("description_text", "")).strip()
+    category_id_raw = str(payload.get("category_id", "")).strip()
+    support_role_id_raw = str(payload.get("support_role_id", "")).strip()
+    welcome_message = str(payload.get("welcome_message", "")).strip()
+
+    if not channel_id_raw or not title or not description_text:
+        return web.json_response({"error": "missing_required_fields"}, status=400)
+
+    try:
+        channel_id = int(channel_id_raw)
+    except ValueError:
+        return web.json_response({"error": "invalid_channel_id"}, status=400)
+
+    channel = guild.get_channel(channel_id)
+    if not isinstance(channel, discord.TextChannel):
+        return web.json_response({"error": "channel_not_found"}, status=404)
+
+    category = None
+    if category_id_raw:
+        try:
+            category_id = int(category_id_raw)
+        except ValueError:
+            return web.json_response({"error": "invalid_category_id"}, status=400)
+        category = guild.get_channel(category_id)
+        if not isinstance(category, discord.CategoryChannel):
+            return web.json_response({"error": "category_not_found"}, status=404)
+
+    support_role = None
+    if support_role_id_raw:
+        try:
+            support_role_id = int(support_role_id_raw)
+        except ValueError:
+            return web.json_response({"error": "invalid_support_role_id"}, status=400)
+        support_role = guild.get_role(support_role_id)
+        if support_role is None:
+            return web.json_response({"error": "support_role_not_found"}, status=404)
+
+    bot_member = guild.me or guild.get_member(bot.user.id)
+    if bot_member is None:
+        return web.json_response({"error": "bot_member_missing"}, status=500)
+    permissions = channel.permissions_for(bot_member)
+    if not (permissions.send_messages and permissions.embed_links):
+        return web.json_response({"error": "missing_channel_permissions"}, status=400)
+
+    database: DatabaseSessionManager = request.app["database"]
+    async with database.session() as session:
+        ticket_repo = TicketRepository(session)
+        panel = await ticket_repo.get_panel_by_id(panel_id)
+        if panel is None or panel.guild_id != guild.id:
+            return web.json_response({"error": "panel_not_found"}, status=404)
+
+        language = await bot.guild_config.get_language(bot.database, guild.id)  # type: ignore[attr-defined]
+        embed = _build_ticket_panel_embed(bot, language=language, title=title, description_text=description_text)
+
+        final_message_id = panel.message_id
+        if panel.channel_id != channel.id:
+            new_message = await channel.send(embed=embed, view=TicketCreateView())
+            bot.add_view(TicketCreateView(), message_id=new_message.id)
+            final_message_id = new_message.id
+
+            old_channel = guild.get_channel(panel.channel_id)
+            if isinstance(old_channel, discord.TextChannel):
+                try:
+                    old_message = await old_channel.fetch_message(panel.message_id)
+                    await old_message.delete()
+                except (discord.NotFound, discord.HTTPException):
+                    pass
+        else:
+            try:
+                existing_message = await channel.fetch_message(panel.message_id)
+                await existing_message.edit(embed=embed, view=TicketCreateView())
+                bot.add_view(TicketCreateView(), message_id=existing_message.id)
+            except discord.NotFound:
+                recreated_message = await channel.send(embed=embed, view=TicketCreateView())
+                bot.add_view(TicketCreateView(), message_id=recreated_message.id)
+                final_message_id = recreated_message.id
+            except discord.HTTPException:
+                return web.json_response({"error": "panel_message_update_failed"}, status=500)
+
+        panel = await ticket_repo.update_panel(
+            panel,
+            channel_id=channel.id,
+            message_id=final_message_id,
+            title=title,
+            description_text=description_text,
+            category_id=category.id if category else None,
+            support_role_id=support_role.id if support_role else None,
+            welcome_message=welcome_message or None,
+        )
+
+    return web.json_response({"updated": True, "panel": _serialize_ticket_panel(panel, guild)})
 
 
 async def delete_ticket_panel(request: web.Request) -> web.Response:
     guild = await _get_authorized_guild(request)
     if guild is None:
-        return web.json_response({"error": "guild_access_denied"}, status=403)
+        return _forbidden("guild_access_denied")
+    if not await _session_can_manage_guild(request, guild):
+        return _forbidden("guild_manage_required")
 
     panel_id = int(request.match_info["panel_id"])
     database: DatabaseSessionManager = request.app["database"]
@@ -350,6 +579,160 @@ async def delete_ticket_panel(request: web.Request) -> web.Response:
         await repo.delete_panel_by_id(panel_id)
 
     return web.json_response({"deleted": True, "panel_id": panel_id})
+
+
+async def add_ticket_note(request: web.Request) -> web.Response:
+    guild = await _get_authorized_guild(request)
+    if guild is None:
+        return _forbidden("guild_access_denied")
+    if not await _session_can_use_ticket_staff(request, guild):
+        return _forbidden("ticket_staff_required")
+
+    ticket_id = int(request.match_info["ticket_id"])
+    try:
+        payload = await request.json()
+    except json.JSONDecodeError:
+        return web.json_response({"error": "invalid_json"}, status=400)
+
+    note_text = str(payload.get("note_text", "")).strip()
+    if not note_text:
+        return web.json_response({"error": "missing_note_text"}, status=400)
+
+    user_id = _session_user_id(request) or 0
+    member = await _get_authorized_member(request, guild)
+    author_name = member.display_name if member is not None else f"PanelUser {user_id}"
+
+    database: DatabaseSessionManager = request.app["database"]
+    async with database.session() as session:
+        ticket_repo = TicketRepository(session)
+        note_repo = TicketNoteRepository(session)
+        ticket = await ticket_repo.get_ticket_by_id(ticket_id)
+        if ticket is None or ticket.guild_id != guild.id:
+            return web.json_response({"error": "ticket_not_found"}, status=404)
+        note = await note_repo.create_note(
+            ticket_id=ticket.id,
+            author_user_id=user_id,
+            author_username=author_name,
+            note_text=note_text,
+        )
+
+    return web.json_response(
+        {
+            "created": True,
+            "note": {
+                "id": note.id,
+                "author_user_id": str(note.author_user_id),
+                "author_username": note.author_username,
+                "note_text": note.note_text,
+                "created_at": note.created_at.isoformat() if note.created_at else None,
+            },
+        },
+        status=201,
+    )
+
+
+async def claim_ticket_from_panel(request: web.Request) -> web.Response:
+    guild = await _get_authorized_guild(request)
+    if guild is None:
+        return _forbidden("guild_access_denied")
+    if not await _session_can_use_ticket_staff(request, guild):
+        return _forbidden("ticket_staff_required")
+
+    ticket_id = int(request.match_info["ticket_id"])
+    user_id = _session_user_id(request)
+    if user_id is None:
+        return web.json_response({"error": "missing_panel_user"}, status=401)
+
+    database: DatabaseSessionManager = request.app["database"]
+    async with database.session() as session:
+        ticket_repo = TicketRepository(session)
+        ticket = await ticket_repo.get_ticket_by_id(ticket_id)
+        if ticket is None or ticket.guild_id != guild.id:
+            return web.json_response({"error": "ticket_not_found"}, status=404)
+        if ticket.status == "closed":
+            return web.json_response({"error": "ticket_closed"}, status=400)
+        if ticket.claimed_by_user_id and ticket.claimed_by_user_id != user_id:
+            return web.json_response({"error": "ticket_already_claimed"}, status=409)
+        ticket = await ticket_repo.claim_ticket(ticket, user_id)
+
+    channel = guild.get_channel(ticket.channel_id)
+    member = await _get_authorized_member(request, guild)
+    if isinstance(channel, discord.TextChannel):
+        try:
+            await channel.send(f"Ticket uebernommen von {member.mention if member else f'<@{user_id}>'}. Status: `claimed`")
+        except discord.HTTPException:
+            pass
+
+    return web.json_response({"updated": True, "status": ticket.status})
+
+
+async def set_ticket_waiting_user_from_panel(request: web.Request) -> web.Response:
+    guild = await _get_authorized_guild(request)
+    if guild is None:
+        return _forbidden("guild_access_denied")
+    if not await _session_can_use_ticket_staff(request, guild):
+        return _forbidden("ticket_staff_required")
+
+    ticket_id = int(request.match_info["ticket_id"])
+    database: DatabaseSessionManager = request.app["database"]
+    async with database.session() as session:
+        ticket_repo = TicketRepository(session)
+        ticket = await ticket_repo.get_ticket_by_id(ticket_id)
+        if ticket is None or ticket.guild_id != guild.id:
+            return web.json_response({"error": "ticket_not_found"}, status=404)
+        ticket = await ticket_repo.set_ticket_status(ticket, "waiting_user")
+
+    channel = guild.get_channel(ticket.channel_id)
+    if isinstance(channel, discord.TextChannel):
+        try:
+            await channel.send("Ticket-Status auf `waiting_user` gesetzt.")
+        except discord.HTTPException:
+            pass
+
+    return web.json_response({"updated": True, "status": ticket.status})
+
+
+async def close_ticket_from_panel(request: web.Request) -> web.Response:
+    guild = await _get_authorized_guild(request)
+    if guild is None:
+        return _forbidden("guild_access_denied")
+    if not await _session_can_use_ticket_staff(request, guild):
+        return _forbidden("ticket_staff_required")
+
+    bot = request.app["bot"]
+    ticket_id = int(request.match_info["ticket_id"])
+    database: DatabaseSessionManager = request.app["database"]
+    user_id = _session_user_id(request)
+
+    async with database.session() as session:
+        ticket_repo = TicketRepository(session)
+        ticket = await ticket_repo.get_ticket_by_id(ticket_id)
+        if ticket is None or ticket.guild_id != guild.id:
+            return web.json_response({"error": "ticket_not_found"}, status=404)
+
+    channel = guild.get_channel(ticket.channel_id)
+    if not isinstance(channel, discord.TextChannel):
+        return web.json_response({"error": "ticket_channel_not_found"}, status=404)
+
+    transcript_path = await bot.tickets.render_transcript(channel)  # type: ignore[attr-defined]
+    async with database.session() as session:
+        ticket_repo = TicketRepository(session)
+        ticket = await ticket_repo.get_ticket_by_id(ticket_id)
+        if ticket is None:
+            return web.json_response({"error": "ticket_not_found"}, status=404)
+        ticket = await ticket_repo.close_ticket(ticket, closed_by_user_id=user_id, transcript_path=transcript_path)
+
+    try:
+        await channel.send(f"Ticket wird geschlossen.\nTranscript: `{transcript_path}`")
+    except discord.HTTPException:
+        pass
+
+    try:
+        await channel.delete(reason=f"Ticket closed from panel by {user_id}")
+    except discord.HTTPException:
+        pass
+
+    return web.json_response({"updated": True, "status": ticket.status, "transcript_path": transcript_path})
 
 
 async def discord_login(request: web.Request) -> web.Response:
@@ -417,7 +800,7 @@ async def cors_middleware(request: web.Request, handler):
         response.headers["Access-Control-Allow-Origin"] = request.headers.get("Origin", allowed_origin).rstrip("/")
         response.headers["Vary"] = "Origin"
         response.headers["Access-Control-Allow-Headers"] = "Authorization, Content-Type, X-Rysio-Panel-Token"
-        response.headers["Access-Control-Allow-Methods"] = "GET, POST, DELETE, OPTIONS"
+        response.headers["Access-Control-Allow-Methods"] = "GET, POST, PATCH, DELETE, OPTIONS"
     return response
 
 
@@ -444,5 +827,10 @@ def create_web_app(database: DatabaseSessionManager, api_token: str, allowed_ori
     app.router.add_get("/api/guilds/{guild_id:\\d+}/logs", get_guild_logs)
     app.router.add_get("/api/guilds/{guild_id:\\d+}/overview", get_guild_overview)
     app.router.add_post("/api/guilds/{guild_id:\\d+}/tickets/panels", create_ticket_panel)
+    app.router.add_patch("/api/guilds/{guild_id:\\d+}/tickets/panels/{panel_id:\\d+}", update_ticket_panel)
     app.router.add_delete("/api/guilds/{guild_id:\\d+}/tickets/panels/{panel_id:\\d+}", delete_ticket_panel)
+    app.router.add_post("/api/guilds/{guild_id:\\d+}/tickets/{ticket_id:\\d+}/note", add_ticket_note)
+    app.router.add_post("/api/guilds/{guild_id:\\d+}/tickets/{ticket_id:\\d+}/claim", claim_ticket_from_panel)
+    app.router.add_post("/api/guilds/{guild_id:\\d+}/tickets/{ticket_id:\\d+}/waiting-user", set_ticket_waiting_user_from_panel)
+    app.router.add_post("/api/guilds/{guild_id:\\d+}/tickets/{ticket_id:\\d+}/close", close_ticket_from_panel)
     return app

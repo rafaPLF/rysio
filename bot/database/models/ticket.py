@@ -32,6 +32,8 @@ class TicketPanel(Base):
     guild_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("guilds.guild_id"), index=True)
     channel_id: Mapped[int] = mapped_column(BigInteger)
     message_id: Mapped[int] = mapped_column(BigInteger, unique=True)
+    title: Mapped[str] = mapped_column(String(255), default="Support Ticket")
+    description_text: Mapped[str] = mapped_column(Text, default="Klicke unten auf den Button, um ein Ticket zu erstellen.")
     category_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     support_role_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     welcome_message: Mapped[str | None] = mapped_column(Text, nullable=True)

@@ -97,5 +97,9 @@ class DatabaseSessionManager:
 
         if "ticket_panels" in tables:
             ticket_panel_columns = {column["name"] for column in inspector.get_columns("ticket_panels")}
+            if "title" not in ticket_panel_columns:
+                connection.execute(text("ALTER TABLE ticket_panels ADD COLUMN title VARCHAR(255) DEFAULT 'Support Ticket'"))
+            if "description_text" not in ticket_panel_columns:
+                connection.execute(text("ALTER TABLE ticket_panels ADD COLUMN description_text TEXT DEFAULT 'Klicke unten auf den Button, um ein Ticket zu erstellen.'"))
             if "welcome_message" not in ticket_panel_columns:
                 connection.execute(text("ALTER TABLE ticket_panels ADD COLUMN welcome_message TEXT"))
