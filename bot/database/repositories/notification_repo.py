@@ -73,6 +73,27 @@ class NotificationSubscriptionRepository:
         )
         return result.scalar_one_or_none()
 
+    async def get_by_id(self, subscription_id: int) -> NotificationSubscription | None:
+        return await self.session.get(NotificationSubscription, subscription_id)
+
+    async def update_subscription(
+        self,
+        subscription: NotificationSubscription,
+        *,
+        platform: str,
+        target: str,
+        announce_channel_id: int,
+        mention_role_id: int | None,
+        enabled: bool = True,
+    ) -> NotificationSubscription:
+        subscription.platform = platform
+        subscription.target = target
+        subscription.announce_channel_id = announce_channel_id
+        subscription.mention_role_id = mention_role_id
+        subscription.enabled = enabled
+        await self.session.flush()
+        return subscription
+
     async def delete_by_target(self, *, guild_id: int, platform: str, target: str) -> int:
         result = await self.session.execute(
             delete(NotificationSubscription).where(
@@ -80,6 +101,12 @@ class NotificationSubscriptionRepository:
                 NotificationSubscription.platform == platform,
                 NotificationSubscription.target == target,
             )
+        )
+        return int(result.rowcount or 0)
+
+    async def delete_by_id(self, subscription_id: int) -> int:
+        result = await self.session.execute(
+            delete(NotificationSubscription).where(NotificationSubscription.id == subscription_id)
         )
         return int(result.rowcount or 0)
 

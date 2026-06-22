@@ -8,9 +8,11 @@ from aiohttp import web
 
 from bot.database.repositories.audit_log_repo import AuditLogRepository
 from bot.database.repositories.guild_repo import GuildRepository
+from bot.database.repositories.notification_repo import NotificationSubscriptionRepository
 from bot.database.repositories.ticket_note_repo import TicketNoteRepository
 from bot.database.repositories.ticket_repo import TicketRepository
 from bot.database.session import DatabaseSessionManager
+from bot.modules.notifications.service import NotificationService
 from bot.modules.tickets.views import TicketCreateView
 from bot.utils.access import has_owner_access
 from bot.web.oauth import (
@@ -141,6 +143,23 @@ def _serialize_ticket(ticket, guild: discord.Guild, notes: list[Any]) -> dict[st
             }
             for note in notes
         ],
+    }
+
+
+def _serialize_notification_subscription(subscription, guild: discord.Guild) -> dict[str, Any]:
+    channel = guild.get_channel(subscription.announce_channel_id)
+    mention_role = guild.get_role(subscription.mention_role_id) if subscription.mention_role_id else None
+    return {
+        "id": subscription.id,
+        "platform": subscription.platform,
+        "target": subscription.target,
+        "announce_channel_id": str(subscription.announce_channel_id),
+        "announce_channel_name": channel.name if isinstance(channel, discord.TextChannel) else f"#{subscription.announce_channel_id}",
+        "mention_role_id": str(subscription.mention_role_id) if subscription.mention_role_id else None,
+        "mention_role_name": mention_role.name if mention_role else None,
+        "enabled": bool(subscription.enabled),
+        "last_seen_content_id": subscription.last_seen_content_id,
+        "created_at": subscription.created_at.isoformat() if subscription.created_at else None,
     }
 
 
@@ -310,9 +329,11 @@ async def get_guild_overview(request: web.Request) -> web.Response:
     database: DatabaseSessionManager = request.app["database"]
     async with database.session() as session:
         guild_repo = GuildRepository(session)
+        notification_repo = NotificationSubscriptionRepository(session)
         ticket_repo = TicketRepository(session)
         note_repo = TicketNoteRepository(session)
         settings = await guild_repo.ensure_settings(guild.id)
+        notifications = await notification_repo.list_for_guild(guild.id)
         panels = await ticket_repo.get_panels_for_guild(guild.id)
         active_tickets = await ticket_repo.get_active_tickets_for_guild(guild.id)
 
@@ -346,10 +367,195 @@ async def get_guild_overview(request: web.Request) -> web.Response:
             [_serialize_role(role) for role in guild.roles if not role.is_default()],
             key=lambda item: (-item["position"], item["name"].lower()),
         ),
+        "notifications": [_serialize_notification_subscription(subscription, guild) for subscription in notifications],
         "ticket_panels": [_serialize_ticket_panel(panel, guild) for panel in panels],
         "active_tickets": serialized_tickets,
     }
     return web.json_response(payload)
+
+
+async def create_notification_subscription(request: web.Request) -> web.Response:
+    guild = await _get_authorized_guild(request)
+    if guild is None:
+        return _forbidden("guild_access_denied")
+    if not await _session_can_manage_guild(request, guild):
+        return _forbidden("guild_manage_required")
+
+    bot = request.app["bot"]
+    service: NotificationService = request.app["notification_service"]
+    if bot is None:
+        return web.json_response({"error": "bot_unavailable"}, status=503)
+
+    try:
+        payload = await request.json()
+    except json.JSONDecodeError:
+        return web.json_response({"error": "invalid_json"}, status=400)
+
+    platform = str(payload.get("platform", "")).strip()
+    target = str(payload.get("target", "")).strip()
+    channel_id_raw = str(payload.get("announce_channel_id", "")).strip()
+    mention_role_id_raw = str(payload.get("mention_role_id", "")).strip()
+    if not platform or not target or not channel_id_raw:
+        return web.json_response({"error": "missing_required_fields"}, status=400)
+
+    try:
+        channel_id = int(channel_id_raw)
+    except ValueError:
+        return web.json_response({"error": "invalid_channel_id"}, status=400)
+
+    channel = guild.get_channel(channel_id)
+    if not isinstance(channel, discord.TextChannel):
+        return web.json_response({"error": "channel_not_found"}, status=404)
+
+    mention_role = None
+    mention_role_id = None
+    if mention_role_id_raw:
+        try:
+            mention_role_id = int(mention_role_id_raw)
+        except ValueError:
+            return web.json_response({"error": "invalid_mention_role_id"}, status=400)
+        mention_role = guild.get_role(mention_role_id)
+        if mention_role is None:
+            return web.json_response({"error": "mention_role_not_found"}, status=404)
+
+    try:
+        _, _, initial_content_found = await service.add_subscription(
+            bot,
+            guild_id=guild.id,
+            platform=platform,
+            target=target,
+            announce_channel_id=channel.id,
+            mention_role_id=mention_role.id if mention_role else None,
+        )
+    except ValueError:
+        return web.json_response({"error": "unsupported_platform"}, status=400)
+
+    subscriptions = await service.list_for_guild(bot, guild.id)
+    normalized_platform = service.normalize_platform(platform)
+    normalized_target = service.normalize_target(normalized_platform, target)
+    subscription = next(
+        (
+            entry
+            for entry in subscriptions
+            if entry.platform == normalized_platform and entry.target == normalized_target
+        ),
+        None,
+    )
+    if subscription is None:
+        return web.json_response({"error": "subscription_save_failed"}, status=500)
+
+    return web.json_response(
+        {
+            "created": True,
+            "subscription": _serialize_notification_subscription(subscription, guild),
+            "initial_content_found": initial_content_found,
+        },
+        status=201,
+    )
+
+
+async def update_notification_subscription(request: web.Request) -> web.Response:
+    guild = await _get_authorized_guild(request)
+    if guild is None:
+        return _forbidden("guild_access_denied")
+    if not await _session_can_manage_guild(request, guild):
+        return _forbidden("guild_manage_required")
+
+    bot = request.app["bot"]
+    service: NotificationService = request.app["notification_service"]
+    if bot is None:
+        return web.json_response({"error": "bot_unavailable"}, status=503)
+
+    subscription_id = int(request.match_info["subscription_id"])
+    try:
+        payload = await request.json()
+    except json.JSONDecodeError:
+        return web.json_response({"error": "invalid_json"}, status=400)
+
+    platform = str(payload.get("platform", "")).strip()
+    target = str(payload.get("target", "")).strip()
+    channel_id_raw = str(payload.get("announce_channel_id", "")).strip()
+    mention_role_id_raw = str(payload.get("mention_role_id", "")).strip()
+    if not platform or not target or not channel_id_raw:
+        return web.json_response({"error": "missing_required_fields"}, status=400)
+
+    try:
+        channel_id = int(channel_id_raw)
+    except ValueError:
+        return web.json_response({"error": "invalid_channel_id"}, status=400)
+    channel = guild.get_channel(channel_id)
+    if not isinstance(channel, discord.TextChannel):
+        return web.json_response({"error": "channel_not_found"}, status=404)
+
+    mention_role = None
+    mention_role_id = None
+    if mention_role_id_raw:
+        try:
+            mention_role_id = int(mention_role_id_raw)
+        except ValueError:
+            return web.json_response({"error": "invalid_mention_role_id"}, status=400)
+        mention_role = guild.get_role(mention_role_id)
+        if mention_role is None:
+            return web.json_response({"error": "mention_role_not_found"}, status=404)
+
+    try:
+        subscription, _, initial_content_found = await service.update_subscription(
+            bot,
+            guild_id=guild.id,
+            subscription_id=subscription_id,
+            platform=platform,
+            target=target,
+            announce_channel_id=channel.id,
+            mention_role_id=mention_role.id if mention_role else None,
+        )
+    except ValueError:
+        return web.json_response({"error": "unsupported_platform"}, status=400)
+
+    if subscription is None:
+        return web.json_response({"error": "subscription_not_found"}, status=404)
+
+    return web.json_response(
+        {
+            "updated": True,
+            "subscription": _serialize_notification_subscription(subscription, guild),
+            "initial_content_found": initial_content_found,
+        }
+    )
+
+
+async def delete_notification_subscription(request: web.Request) -> web.Response:
+    guild = await _get_authorized_guild(request)
+    if guild is None:
+        return _forbidden("guild_access_denied")
+    if not await _session_can_manage_guild(request, guild):
+        return _forbidden("guild_manage_required")
+
+    bot = request.app["bot"]
+    service: NotificationService = request.app["notification_service"]
+    if bot is None:
+        return web.json_response({"error": "bot_unavailable"}, status=503)
+
+    subscription_id = int(request.match_info["subscription_id"])
+    deleted = await service.delete_subscription_by_id(bot, guild_id=guild.id, subscription_id=subscription_id)
+    if deleted == 0:
+        return web.json_response({"error": "subscription_not_found"}, status=404)
+    return web.json_response({"deleted": True, "subscription_id": subscription_id})
+
+
+async def check_guild_notifications(request: web.Request) -> web.Response:
+    guild = await _get_authorized_guild(request)
+    if guild is None:
+        return _forbidden("guild_access_denied")
+    if not await _session_can_manage_guild(request, guild):
+        return _forbidden("guild_manage_required")
+
+    bot = request.app["bot"]
+    service: NotificationService = request.app["notification_service"]
+    if bot is None:
+        return web.json_response({"error": "bot_unavailable"}, status=503)
+
+    processed = await service.poll_guild(bot, guild.id)
+    return web.json_response({"checked": True, "processed": processed})
 
 
 async def create_ticket_panel(request: web.Request) -> web.Response:
@@ -812,6 +1018,7 @@ def create_web_app(database: DatabaseSessionManager, api_token: str, allowed_ori
     app["allowed_origin"] = allowed_origin
     app["oauth_states"] = {}
     app["panel_sessions"] = {}
+    app["notification_service"] = NotificationService()
     app["oauth_settings"] = create_oauth_settings(
         client_id=getattr(bot.settings, "discord_client_id", "") if bot is not None else "",
         client_secret=getattr(bot.settings, "discord_client_secret", "") if bot is not None else "",
@@ -826,6 +1033,10 @@ def create_web_app(database: DatabaseSessionManager, api_token: str, allowed_ori
     app.router.add_get("/api/panel/session", get_panel_session)
     app.router.add_get("/api/guilds/{guild_id:\\d+}/logs", get_guild_logs)
     app.router.add_get("/api/guilds/{guild_id:\\d+}/overview", get_guild_overview)
+    app.router.add_post("/api/guilds/{guild_id:\\d+}/notifications", create_notification_subscription)
+    app.router.add_patch("/api/guilds/{guild_id:\\d+}/notifications/{subscription_id:\\d+}", update_notification_subscription)
+    app.router.add_delete("/api/guilds/{guild_id:\\d+}/notifications/{subscription_id:\\d+}", delete_notification_subscription)
+    app.router.add_post("/api/guilds/{guild_id:\\d+}/notifications/check", check_guild_notifications)
     app.router.add_post("/api/guilds/{guild_id:\\d+}/tickets/panels", create_ticket_panel)
     app.router.add_patch("/api/guilds/{guild_id:\\d+}/tickets/panels/{panel_id:\\d+}", update_ticket_panel)
     app.router.add_delete("/api/guilds/{guild_id:\\d+}/tickets/panels/{panel_id:\\d+}", delete_ticket_panel)
@@ -833,4 +1044,8 @@ def create_web_app(database: DatabaseSessionManager, api_token: str, allowed_ori
     app.router.add_post("/api/guilds/{guild_id:\\d+}/tickets/{ticket_id:\\d+}/claim", claim_ticket_from_panel)
     app.router.add_post("/api/guilds/{guild_id:\\d+}/tickets/{ticket_id:\\d+}/waiting-user", set_ticket_waiting_user_from_panel)
     app.router.add_post("/api/guilds/{guild_id:\\d+}/tickets/{ticket_id:\\d+}/close", close_ticket_from_panel)
+    async def _close_notification_service(application: web.Application) -> None:
+        await application["notification_service"].close()
+
+    app.on_cleanup.append(_close_notification_service)
     return app

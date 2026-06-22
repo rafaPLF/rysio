@@ -86,6 +86,51 @@ class NotificationService:
             repo = NotificationSubscriptionRepository(session)
             return await repo.list_for_guild(guild_id)
 
+    async def update_subscription(
+        self,
+        bot: discord.Client,
+        *,
+        guild_id: int,
+        subscription_id: int,
+        platform: str,
+        target: str,
+        announce_channel_id: int,
+        mention_role_id: int | None,
+    ) -> tuple[object | None, str | None, bool]:
+        normalized_platform = self.normalize_platform(platform)
+        normalized_target = self.normalize_target(normalized_platform, target)
+        initial_content = await self.fetch_latest_content(bot, normalized_platform, normalized_target)
+        initial_content_found = initial_content is not None
+        initial_last_seen_content_id = (
+            initial_content.content_id if initial_content and normalized_platform == "youtube" else None
+        )
+
+        async with bot.database.session() as session:  # type: ignore[attr-defined]
+            repo = NotificationSubscriptionRepository(session)
+            subscription = await repo.get_by_id(subscription_id)
+            if subscription is None or subscription.guild_id != guild_id:
+                return None, None, False
+            subscription = await repo.update_subscription(
+                subscription,
+                platform=normalized_platform,
+                target=normalized_target,
+                announce_channel_id=announce_channel_id,
+                mention_role_id=mention_role_id,
+                enabled=True,
+            )
+            if initial_last_seen_content_id is not None:
+                subscription.last_seen_content_id = initial_last_seen_content_id
+                await session.flush()
+        return subscription, getattr(subscription, "last_seen_content_id", None), initial_content_found
+
+    async def delete_subscription_by_id(self, bot: discord.Client, *, guild_id: int, subscription_id: int) -> int:
+        async with bot.database.session() as session:  # type: ignore[attr-defined]
+            repo = NotificationSubscriptionRepository(session)
+            subscription = await repo.get_by_id(subscription_id)
+            if subscription is None or subscription.guild_id != guild_id:
+                return 0
+            return await repo.delete_by_id(subscription_id)
+
     async def poll_all(self, bot: discord.Client) -> None:
         await self.startup()
         async with bot.database.session() as session:  # type: ignore[attr-defined]
@@ -93,40 +138,58 @@ class NotificationService:
             subscriptions = await repo.list_enabled()
 
         for subscription in subscriptions:
-            try:
-                content = await self.fetch_latest_content(bot, subscription.platform, subscription.target)
-            except Exception:
-                continue
+            await self._process_subscription(bot, subscription)
 
-            if content is None or content.content_id == subscription.last_seen_content_id:
-                continue
+    async def poll_guild(self, bot: discord.Client, guild_id: int) -> int:
+        await self.startup()
+        async with bot.database.session() as session:  # type: ignore[attr-defined]
+            repo = NotificationSubscriptionRepository(session)
+            subscriptions = await repo.list_for_guild(guild_id)
 
-            guild = bot.get_guild(subscription.guild_id)
-            if guild is None:
-                continue
+        processed = 0
+        for subscription in subscriptions:
+            await self._process_subscription(bot, subscription)
+            processed += 1
+        return processed
 
-            channel = guild.get_channel(subscription.announce_channel_id)
-            if not isinstance(channel, discord.TextChannel):
-                continue
+    async def _process_subscription(self, bot: discord.Client, subscription) -> None:
+        if not getattr(subscription, "enabled", True):
+            return
 
-            bot_member = guild.me or guild.get_member(bot.user.id)  # type: ignore[attr-defined]
-            if bot_member is None:
-                continue
-            permissions = channel.permissions_for(bot_member)
-            if not (permissions.view_channel and permissions.send_messages and permissions.embed_links):
-                continue
+        try:
+            content = await self.fetch_latest_content(bot, subscription.platform, subscription.target)
+        except Exception:
+            return
 
-            embed = self._build_announcement_embed(content)
-            try:
-                message_content = self._build_announcement_message(subscription, content, guild)
-                allowed_mentions = discord.AllowedMentions(roles=True)
-                await channel.send(content=message_content, embed=embed, allowed_mentions=allowed_mentions)
-            except discord.HTTPException:
-                continue
+        if content is None or content.content_id == subscription.last_seen_content_id:
+            return
 
-            async with bot.database.session() as session:  # type: ignore[attr-defined]
-                repo = NotificationSubscriptionRepository(session)
-                await repo.update_last_seen_content_id(subscription.id, content.content_id)
+        guild = bot.get_guild(subscription.guild_id)
+        if guild is None:
+            return
+
+        channel = guild.get_channel(subscription.announce_channel_id)
+        if not isinstance(channel, discord.TextChannel):
+            return
+
+        bot_member = guild.me or guild.get_member(bot.user.id)  # type: ignore[attr-defined]
+        if bot_member is None:
+            return
+        permissions = channel.permissions_for(bot_member)
+        if not (permissions.view_channel and permissions.send_messages and permissions.embed_links):
+            return
+
+        embed = self._build_announcement_embed(content)
+        try:
+            message_content = self._build_announcement_message(subscription, content, guild)
+            allowed_mentions = discord.AllowedMentions(roles=True)
+            await channel.send(content=message_content, embed=embed, allowed_mentions=allowed_mentions)
+        except discord.HTTPException:
+            return
+
+        async with bot.database.session() as session:  # type: ignore[attr-defined]
+            repo = NotificationSubscriptionRepository(session)
+            await repo.update_last_seen_content_id(subscription.id, content.content_id)
 
     def normalize_platform(self, platform: str) -> str:
         normalized = platform.strip().lower()

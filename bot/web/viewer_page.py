@@ -231,9 +231,61 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
         </section>
         <section class="metrics">
           <article class="metric"><h3>Verwaltbare Server</h3><div class="metric-value" id="guildCountStat">0</div><p class="muted">Kommt direkt aus deinem Discord Login.</p></article>
+          <article class="metric"><h3>Notifications</h3><div class="metric-value" id="notificationCountStat">0</div><p class="muted">Twitch, Kick und YouTube pro Server.</p></article>
           <article class="metric"><h3>Ticket-Panels</h3><div class="metric-value" id="ticketPanelCountStat">0</div><p class="muted">Panels fuer den aktuell ausgewaehlten Server.</p></article>
           <article class="metric"><h3>Offene Tickets</h3><div class="metric-value" id="activeTicketCountStat">0</div><p class="muted">Open, claimed und waiting_user im Web.</p></article>
           <article class="metric"><h3>Geladene Logs</h3><div class="metric-value" id="loadedStat">0</div><p class="muted">Audit-Logs bleiben parallel nutzbar.</p></article>
+        </section>
+        <section class="card">
+          <div class="panel-head">
+            <div>
+              <h2>Notification Manager</h2>
+              <p class="muted">Benachrichtigungen fuer Twitch, Kick und YouTube direkt im Panel verwalten und manuell pruefen.</p>
+            </div>
+            <span class="panel-tag">Live Alerts</span>
+          </div>
+          <div class="ticket-grid">
+            <section class="card">
+              <h3 id="notificationFormHeading">Neue Notification erstellen</h3>
+              <div class="stack">
+                <div>
+                  <label for="notificationPlatformSelect">Plattform</label>
+                  <select id="notificationPlatformSelect">
+                    <option value="twitch">Twitch</option>
+                    <option value="kick">Kick</option>
+                    <option value="youtube">YouTube</option>
+                  </select>
+                </div>
+                <div>
+                  <label for="notificationTargetInput">Target</label>
+                  <input id="notificationTargetInput" placeholder="Twitch/Kick Username oder YouTube Channel-ID">
+                </div>
+                <div>
+                  <label for="notificationChannelSelect">Discord Channel</label>
+                  <select id="notificationChannelSelect">
+                    <option value="">Channel auswaehlen</option>
+                  </select>
+                </div>
+                <div>
+                  <label for="notificationMentionRoleSelect">Mention Rolle</label>
+                  <select id="notificationMentionRoleSelect">
+                    <option value="">Keine Mention Rolle</option>
+                  </select>
+                </div>
+              </div>
+              <div class="button-row" style="margin-top:14px;">
+                <button id="saveNotificationButton" type="button">Notification speichern</button>
+                <button id="cancelNotificationEditButton" type="button" class="ghost">Bearbeiten abbrechen</button>
+                <button id="checkNotificationsButton" type="button" class="ghost">Jetzt pruefen</button>
+              </div>
+            </section>
+            <section class="card">
+              <h3>Bestehende Notifications</h3>
+              <div id="notificationList" class="panel-list">
+                <div class="empty">Noch kein Server geladen.</div>
+              </div>
+            </section>
+          </div>
         </section>
         <section class="card">
           <div class="panel-head">
@@ -328,6 +380,7 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
     const oauthErrorText = document.getElementById("oauthErrorText");
     const loadedStat = document.getElementById("loadedStat");
     const guildCountStat = document.getElementById("guildCountStat");
+    const notificationCountStat = document.getElementById("notificationCountStat");
     const ticketPanelCountStat = document.getElementById("ticketPanelCountStat");
     const activeTicketCountStat = document.getElementById("activeTicketCountStat");
     const entries = document.getElementById("entries");
@@ -346,10 +399,19 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
     const ticketFormHeading = document.getElementById("ticketFormHeading");
     const saveTicketPanelButton = document.getElementById("saveTicketPanelButton");
     const cancelTicketEditButton = document.getElementById("cancelTicketEditButton");
+    const notificationPlatformSelect = document.getElementById("notificationPlatformSelect");
+    const notificationTargetInput = document.getElementById("notificationTargetInput");
+    const notificationChannelSelect = document.getElementById("notificationChannelSelect");
+    const notificationMentionRoleSelect = document.getElementById("notificationMentionRoleSelect");
+    const notificationList = document.getElementById("notificationList");
+    const notificationFormHeading = document.getElementById("notificationFormHeading");
+    const saveNotificationButton = document.getElementById("saveNotificationButton");
+    const cancelNotificationEditButton = document.getElementById("cancelNotificationEditButton");
 
     let sessionToken = "";
     let currentOverview = null;
     let editingPanelId = null;
+    let editingNotificationId = null;
 
     function escapeHtml(value) {{
       return String(value).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#39;");
@@ -430,6 +492,16 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
       ticketWelcomeInput.value = "";
     }}
 
+    function resetNotificationForm() {{
+      editingNotificationId = null;
+      notificationFormHeading.textContent = "Neue Notification erstellen";
+      saveNotificationButton.textContent = "Notification speichern";
+      notificationPlatformSelect.value = "twitch";
+      notificationTargetInput.value = "";
+      notificationChannelSelect.value = "";
+      notificationMentionRoleSelect.value = "";
+    }}
+
     function fillTicketForm(panel) {{
       editingPanelId = panel.id;
       ticketFormHeading.textContent = `Ticket-Panel bearbeiten (#${{panel.channel_name}})`;
@@ -441,6 +513,18 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
       ticketDescriptionInput.value = panel.description_text || "";
       ticketWelcomeInput.value = panel.welcome_message || "";
       statusText.textContent = `Bearbeitungsmodus fuer Panel #${{panel.id}} aktiviert.`;
+      window.scrollTo({{ top: 0, behavior: "smooth" }});
+    }}
+
+    function fillNotificationForm(subscription) {{
+      editingNotificationId = subscription.id;
+      notificationFormHeading.textContent = `Notification bearbeiten (${{subscription.platform}})`;
+      saveNotificationButton.textContent = "Notification aktualisieren";
+      notificationPlatformSelect.value = subscription.platform || "twitch";
+      notificationTargetInput.value = subscription.target || "";
+      notificationChannelSelect.value = subscription.announce_channel_id || "";
+      notificationMentionRoleSelect.value = subscription.mention_role_id || "";
+      statusText.textContent = `Bearbeitungsmodus fuer Notification #${{subscription.id}} aktiviert.`;
       window.scrollTo({{ top: 0, behavior: "smooth" }});
     }}
 
@@ -471,6 +555,44 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
       sessionUserText.textContent = `Eingeloggt als ${{username}}.`;
       sessionGuildCountText.textContent = `${{session.guilds.length}} verwaltbare Server von Discord geladen.`;
       populateGuildSelect(session.guilds);
+    }}
+
+    function renderNotifications(subscriptions) {{
+      notificationCountStat.textContent = String(subscriptions.length);
+      if (!subscriptions.length) {{
+        notificationList.innerHTML = '<div class="empty">Noch keine Notifications fuer diesen Server gefunden.</div>';
+        return;
+      }}
+      notificationList.innerHTML = subscriptions.map((subscription) => `
+        <article class="panel-card">
+          <div class="panel-head">
+            <strong>${{escapeHtml(subscription.platform)}} | ${{escapeHtml(subscription.target)}}</strong>
+            <span class="panel-tag">Notification-ID ${{escapeHtml(subscription.id)}}</span>
+          </div>
+          <div class="panel-meta">
+            <div>Channel: <strong>#${{escapeHtml(subscription.announce_channel_name)}}</strong></div>
+            <div>Mention Rolle: ${{escapeHtml(subscription.mention_role_name || "Keine")}}</div>
+            <div>Letzter Inhalt: <code>${{escapeHtml(subscription.last_seen_content_id || "-")}}</code></div>
+            <div>Status: ${{subscription.enabled ? "aktiv" : "deaktiviert"}}</div>
+          </div>
+          <div class="button-row" style="margin-top:14px;">
+            <button type="button" data-edit-notification-id="${{escapeHtml(subscription.id)}}">Bearbeiten</button>
+            <button type="button" class="danger-button" data-delete-notification-id="${{escapeHtml(subscription.id)}}">Loeschen</button>
+          </div>
+        </article>
+      `).join("");
+
+      for (const button of notificationList.querySelectorAll("[data-edit-notification-id]")) {{
+        button.addEventListener("click", () => {{
+          const subscription = subscriptions.find((entry) => String(entry.id) === String(button.getAttribute("data-edit-notification-id")));
+          if (subscription) fillNotificationForm(subscription);
+        }});
+      }}
+      for (const button of notificationList.querySelectorAll("[data-delete-notification-id]")) {{
+        button.addEventListener("click", async () => {{
+          await deleteNotification(button.getAttribute("data-delete-notification-id"));
+        }});
+      }}
     }}
 
     function renderTicketPanels(panels) {{
@@ -594,11 +716,17 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
       selectedGuildNameText.textContent = overview.guild.name;
 
       ticketChannelSelect.innerHTML = '<option value="">Channel auswaehlen</option>';
+      notificationChannelSelect.innerHTML = '<option value="">Channel auswaehlen</option>';
       for (const channel of overview.channels || []) {{
         const option = document.createElement("option");
         option.value = channel.id;
         option.textContent = `#${{channel.name}}`;
         ticketChannelSelect.appendChild(option);
+
+        const notificationOption = document.createElement("option");
+        notificationOption.value = channel.id;
+        notificationOption.textContent = `#${{channel.name}}`;
+        notificationChannelSelect.appendChild(notificationOption);
       }}
 
       ticketCategorySelect.innerHTML = '<option value="">Keine Kategorie</option>';
@@ -610,13 +738,20 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
       }}
 
       ticketSupportRoleSelect.innerHTML = '<option value="">Keine Support Rolle</option>';
+      notificationMentionRoleSelect.innerHTML = '<option value="">Keine Mention Rolle</option>';
       for (const role of overview.roles || []) {{
         const option = document.createElement("option");
         option.value = role.id;
         option.textContent = role.name;
         ticketSupportRoleSelect.appendChild(option);
+
+        const notificationRoleOption = document.createElement("option");
+        notificationRoleOption.value = role.id;
+        notificationRoleOption.textContent = role.name;
+        notificationMentionRoleSelect.appendChild(notificationRoleOption);
       }}
 
+      renderNotifications(overview.notifications || []);
       renderTicketPanels(overview.ticket_panels || []);
       renderActiveTickets(overview.active_tickets || []);
     }}
@@ -659,11 +794,14 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
         currentOverview = null;
         selectedGuildIdText.textContent = "-";
         selectedGuildNameText.textContent = "Noch kein Server ausgewaehlt.";
+        notificationList.innerHTML = '<div class="empty">Waehle zuerst einen Server aus.</div>';
         ticketPanelsList.innerHTML = '<div class="empty">Waehle zuerst einen Server aus.</div>';
         activeTicketsList.innerHTML = '<div class="empty">Waehle zuerst einen Server aus.</div>';
+        notificationCountStat.textContent = "0";
         ticketPanelCountStat.textContent = "0";
         activeTicketCountStat.textContent = "0";
         resetTicketForm();
+        resetNotificationForm();
         return;
       }}
 
@@ -678,15 +816,103 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
         if (!response.ok) throw new Error(payload.error || `HTTP ${{response.status}}`);
         renderOverview(payload);
         resetTicketForm();
+        resetNotificationForm();
         statusText.textContent = `Serverdaten fuer ${{payload.guild.name}} geladen.`;
       }} catch (error) {{
         currentOverview = null;
+        notificationList.innerHTML = '<div class="empty">Notifications konnten nicht geladen werden.</div>';
         ticketPanelsList.innerHTML = '<div class="empty">Serverdaten konnten nicht geladen werden.</div>';
         activeTicketsList.innerHTML = '<div class="empty">Tickets konnten nicht geladen werden.</div>';
+        notificationCountStat.textContent = "0";
         ticketPanelCountStat.textContent = "0";
         activeTicketCountStat.textContent = "0";
         setError(`Serverdaten fehlgeschlagen: ${{error.message}}`);
         statusText.textContent = "Fehler beim Laden der Serverdaten.";
+      }}
+    }}
+
+    async function saveNotification() {{
+      const guildId = guildSelect.value;
+      const apiBaseUrl = normalizeBaseUrl(apiBaseUrlInput.value || DEFAULT_API_BASE_URL);
+      const wasEditing = Boolean(editingNotificationId);
+      const payload = {{
+        platform: notificationPlatformSelect.value,
+        target: notificationTargetInput.value.trim(),
+        announce_channel_id: notificationChannelSelect.value,
+        mention_role_id: notificationMentionRoleSelect.value,
+      }};
+
+      if (!guildId) {{ setError("Bitte zuerst einen Discord Server auswaehlen."); return; }}
+      if (!payload.platform || !payload.target || !payload.announce_channel_id) {{
+        setError("Bitte Plattform, Target und Channel fuellen.");
+        return;
+      }}
+
+      setError("");
+      statusText.textContent = wasEditing ? "Notification wird aktualisiert..." : "Notification wird erstellt...";
+      try {{
+        const endpoint = wasEditing
+          ? `${{apiBaseUrl}}/api/guilds/${{guildId}}/notifications/${{editingNotificationId}}`
+          : `${{apiBaseUrl}}/api/guilds/${{guildId}}/notifications`;
+        const method = wasEditing ? "PATCH" : "POST";
+        const response = await fetch(endpoint, {{
+          method,
+          headers: {{
+            ...getAuthHeaders(),
+            "Content-Type": "application/json",
+          }},
+          body: JSON.stringify(payload),
+        }});
+        const body = await response.json();
+        if (!response.ok) throw new Error(body.error || `HTTP ${{response.status}}`);
+        resetNotificationForm();
+        await loadOverview();
+        statusText.textContent = wasEditing ? "Notification gespeichert." : "Notification erstellt.";
+      }} catch (error) {{
+        setError(`Notification fehlgeschlagen: ${{error.message}}`);
+        statusText.textContent = "Notification konnte nicht gespeichert werden.";
+      }}
+    }}
+
+    async function deleteNotification(subscriptionId) {{
+      const guildId = guildSelect.value;
+      const apiBaseUrl = normalizeBaseUrl(apiBaseUrlInput.value || DEFAULT_API_BASE_URL);
+      if (!guildId || !subscriptionId) return;
+      setError("");
+      statusText.textContent = "Notification wird geloescht...";
+      try {{
+        const response = await fetch(`${{apiBaseUrl}}/api/guilds/${{guildId}}/notifications/${{subscriptionId}}`, {{
+          method: "DELETE",
+          headers: getAuthHeaders(),
+        }});
+        const body = await response.json();
+        if (!response.ok) throw new Error(body.error || `HTTP ${{response.status}}`);
+        if (String(editingNotificationId) === String(subscriptionId)) resetNotificationForm();
+        await loadOverview();
+        statusText.textContent = "Notification geloescht.";
+      }} catch (error) {{
+        setError(`Notification-Loeschen fehlgeschlagen: ${{error.message}}`);
+        statusText.textContent = "Notification konnte nicht geloescht werden.";
+      }}
+    }}
+
+    async function checkNotificationsNow() {{
+      const guildId = guildSelect.value;
+      const apiBaseUrl = normalizeBaseUrl(apiBaseUrlInput.value || DEFAULT_API_BASE_URL);
+      if (!guildId) {{ setError("Bitte zuerst einen Discord Server auswaehlen."); return; }}
+      setError("");
+      statusText.textContent = "Notifications werden jetzt manuell geprueft...";
+      try {{
+        const response = await fetch(`${{apiBaseUrl}}/api/guilds/${{guildId}}/notifications/check`, {{
+          method: "POST",
+          headers: getAuthHeaders(),
+        }});
+        const body = await response.json();
+        if (!response.ok) throw new Error(body.error || `HTTP ${{response.status}}`);
+        statusText.textContent = `Notification-Check abgeschlossen. Geprueft: ${{body.processed ?? 0}}.`;
+      }} catch (error) {{
+        setError(`Notification-Check fehlgeschlagen: ${{error.message}}`);
+        statusText.textContent = "Notification-Check fehlgeschlagen.";
       }}
     }}
 
@@ -846,6 +1072,9 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
     document.getElementById("reloadOverviewButton").addEventListener("click", loadOverview);
     document.getElementById("saveTicketPanelButton").addEventListener("click", saveTicketPanel);
     cancelTicketEditButton.addEventListener("click", resetTicketForm);
+    saveNotificationButton.addEventListener("click", saveNotification);
+    cancelNotificationEditButton.addEventListener("click", resetNotificationForm);
+    document.getElementById("checkNotificationsButton").addEventListener("click", checkNotificationsNow);
     document.getElementById("discordLoginButton").addEventListener("click", () => {{
       const apiBaseUrl = normalizeBaseUrl(apiBaseUrlInput.value || DEFAULT_API_BASE_URL);
       window.location.href = `${{apiBaseUrl}}/api/oauth/discord/login`;
@@ -857,11 +1086,14 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
       guildSelect.value = "";
       selectedGuildIdText.textContent = "-";
       selectedGuildNameText.textContent = "Noch kein Server ausgewaehlt.";
+      notificationList.innerHTML = '<div class="empty">Discord-Session getrennt.</div>';
       ticketPanelsList.innerHTML = '<div class="empty">Discord-Session getrennt.</div>';
       activeTicketsList.innerHTML = '<div class="empty">Discord-Session getrennt.</div>';
+      notificationCountStat.textContent = "0";
       ticketPanelCountStat.textContent = "0";
       activeTicketCountStat.textContent = "0";
       resetTicketForm();
+      resetNotificationForm();
       setOauthError("");
       statusText.textContent = "Discord-Session lokal entfernt.";
     }});
