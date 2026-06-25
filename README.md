@@ -45,7 +45,7 @@ WEB_API_ENABLED=true
 WEB_API_HOST=127.0.0.1
 WEB_API_PORT=8080
 WEB_API_TOKEN=dein-langer-geheimer-token
-WEB_API_ALLOWED_ORIGIN=https://portal.rafaplf-testserver.de
+WEB_API_ALLOWED_ORIGIN=https://console.rysio.app
 ```
 
 Verfuegbare Startpunkte:

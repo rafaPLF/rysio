@@ -535,7 +535,7 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
           <div class="panel-head">
             <div>
               <h2 class="panel-view-title">API Verbindung</h2>
-              <p class="muted">Nur noch als eigener Bereich. Morgen koennen wir das komplett auf `api.rysio.app` umstellen und spaeter noch weiter verstecken.</p>
+              <p class="muted">API laeuft separat auf `api.rysio.app`. Spaeter koennen wir diesen Bereich fuer normale Nutzer noch weiter ausblenden.</p>
             </div>
             <span class="panel-tag">Connection</span>
           </div>
