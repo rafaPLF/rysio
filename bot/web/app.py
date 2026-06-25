@@ -11,9 +11,11 @@ from bot.database.repositories.guild_repo import GuildRepository
 from bot.database.repositories.notification_repo import NotificationSubscriptionRepository
 from bot.database.repositories.ticket_note_repo import TicketNoteRepository
 from bot.database.repositories.ticket_repo import TicketRepository
+from bot.database.repositories.verification_repo import VerificationRepository
 from bot.database.session import DatabaseSessionManager
 from bot.modules.notifications.service import NotificationService
 from bot.modules.tickets.views import TicketCreateView
+from bot.modules.verification.views import VerificationView
 from bot.utils.access import has_owner_access
 from bot.web.oauth import (
     build_callback_redirect,
@@ -163,11 +165,39 @@ def _serialize_notification_subscription(subscription, guild: discord.Guild) -> 
     }
 
 
+def _serialize_verification_settings(settings, guild: discord.Guild, *, enabled: bool) -> dict[str, Any]:
+    channel = guild.get_channel(settings.verification_channel_id) if settings and settings.verification_channel_id else None
+    role = guild.get_role(settings.verified_role_id) if settings and settings.verified_role_id else None
+    return {
+        "enabled": enabled,
+        "verification_channel_id": str(settings.verification_channel_id) if settings and settings.verification_channel_id else None,
+        "verification_channel_name": channel.name if isinstance(channel, discord.TextChannel) else None,
+        "verified_role_id": str(settings.verified_role_id) if settings and settings.verified_role_id else None,
+        "verified_role_name": role.name if role else None,
+        "panel_message_id": str(settings.panel_message_id) if settings and settings.panel_message_id else None,
+        "captcha_type": settings.captcha_type if settings else "button",
+    }
+
+
 def _build_ticket_panel_embed(bot: discord.Client, *, language: str, title: str, description_text: str) -> discord.Embed:
     embed = discord.Embed(title=title, description=description_text, color=discord.Color.blurple())
     embed.add_field(
         name=bot.localization.translate("tickets.panel_field_name", language=language),  # type: ignore[attr-defined]
         value=bot.localization.translate("tickets.panel_field_value", language=language),  # type: ignore[attr-defined]
+        inline=False,
+    )
+    return embed
+
+
+def _build_verification_panel_embed(bot: discord.Client, *, language: str) -> discord.Embed:
+    embed = discord.Embed(
+        title=bot.localization.translate("verification.panel_title", language=language),  # type: ignore[attr-defined]
+        description=bot.localization.translate("verification.panel_description", language=language),  # type: ignore[attr-defined]
+        color=discord.Color.green(),
+    )
+    embed.add_field(
+        name=bot.localization.translate("verification.panel_field_name", language=language),  # type: ignore[attr-defined]
+        value=bot.localization.translate("verification.panel_field_value", language=language),  # type: ignore[attr-defined]
         inline=False,
     )
     return embed
@@ -332,7 +362,9 @@ async def get_guild_overview(request: web.Request) -> web.Response:
         notification_repo = NotificationSubscriptionRepository(session)
         ticket_repo = TicketRepository(session)
         note_repo = TicketNoteRepository(session)
+        verification_repo = VerificationRepository(session)
         settings = await guild_repo.ensure_settings(guild.id)
+        verification = await verification_repo.get_settings(guild.id)
         notifications = await notification_repo.list_for_guild(guild.id)
         panels = await ticket_repo.get_panels_for_guild(guild.id)
         active_tickets = await ticket_repo.get_active_tickets_for_guild(guild.id)
@@ -368,6 +400,7 @@ async def get_guild_overview(request: web.Request) -> web.Response:
             key=lambda item: (-item["position"], item["name"].lower()),
         ),
         "notifications": [_serialize_notification_subscription(subscription, guild) for subscription in notifications],
+        "verification": _serialize_verification_settings(verification, guild, enabled=bool(settings.verification_enabled)),
         "ticket_panels": [_serialize_ticket_panel(panel, guild) for panel in panels],
         "active_tickets": serialized_tickets,
     }
@@ -631,6 +664,118 @@ async def create_ticket_panel(request: web.Request) -> web.Response:
 
     bot.add_view(TicketCreateView(), message_id=message.id)
     return web.json_response({"created": True, "panel": _serialize_ticket_panel(panel, guild)}, status=201)
+
+
+async def save_verification_settings(request: web.Request) -> web.Response:
+    guild = await _get_authorized_guild(request)
+    if guild is None:
+        return _forbidden("guild_access_denied")
+    if not await _session_can_manage_guild(request, guild):
+        return _forbidden("guild_manage_required")
+
+    bot = request.app["bot"]
+    if bot is None:
+        return web.json_response({"error": "bot_unavailable"}, status=503)
+
+    try:
+        payload = await request.json()
+    except json.JSONDecodeError:
+        return web.json_response({"error": "invalid_json"}, status=400)
+
+    verification_channel_id_raw = str(payload.get("verification_channel_id", "")).strip()
+    verified_role_id_raw = str(payload.get("verified_role_id", "")).strip()
+    captcha_type = str(payload.get("captcha_type", "button")).strip().lower() or "button"
+
+    if not verification_channel_id_raw or not verified_role_id_raw:
+        return web.json_response({"error": "missing_required_fields"}, status=400)
+    if captcha_type != "button":
+        return web.json_response({"error": "unsupported_captcha_type"}, status=400)
+
+    try:
+        verification_channel_id = int(verification_channel_id_raw)
+    except ValueError:
+        return web.json_response({"error": "invalid_verification_channel_id"}, status=400)
+
+    try:
+        verified_role_id = int(verified_role_id_raw)
+    except ValueError:
+        return web.json_response({"error": "invalid_verified_role_id"}, status=400)
+
+    channel = guild.get_channel(verification_channel_id)
+    if not isinstance(channel, discord.TextChannel):
+        return web.json_response({"error": "verification_channel_not_found"}, status=404)
+
+    verified_role = guild.get_role(verified_role_id)
+    if verified_role is None:
+        return web.json_response({"error": "verified_role_not_found"}, status=404)
+
+    bot_member = guild.me or guild.get_member(bot.user.id)
+    if bot_member is None:
+        return web.json_response({"error": "bot_member_missing"}, status=500)
+    if not bot_member.guild_permissions.manage_roles:
+        return web.json_response({"error": "missing_manage_roles_permission"}, status=400)
+    if verified_role >= bot_member.top_role:
+        return web.json_response({"error": "verified_role_above_bot"}, status=400)
+
+    permissions = channel.permissions_for(bot_member)
+    if not (permissions.send_messages and permissions.embed_links):
+        return web.json_response({"error": "missing_channel_permissions"}, status=400)
+
+    database: DatabaseSessionManager = request.app["database"]
+    async with database.session() as session:
+        guild_repo = GuildRepository(session)
+        verification_repo = VerificationRepository(session)
+        await guild_repo.ensure_guild(guild.id, bot.guild_config.get_default_language())  # type: ignore[attr-defined]
+        settings = await guild_repo.ensure_settings(guild.id)
+        verification_settings = await verification_repo.get_settings(guild.id)
+        language = await bot.guild_config.get_language(bot.database, guild.id)  # type: ignore[attr-defined]
+        embed = _build_verification_panel_embed(bot, language=language)
+
+        final_message_id = verification_settings.panel_message_id if verification_settings else None
+        if verification_settings is None or verification_settings.panel_message_id is None:
+            message = await channel.send(embed=embed, view=VerificationView())
+            bot.add_view(VerificationView(), message_id=message.id)
+            final_message_id = message.id
+        elif verification_settings.verification_channel_id != channel.id:
+            message = await channel.send(embed=embed, view=VerificationView())
+            bot.add_view(VerificationView(), message_id=message.id)
+            final_message_id = message.id
+
+            old_channel = guild.get_channel(verification_settings.verification_channel_id) if verification_settings.verification_channel_id else None
+            if isinstance(old_channel, discord.TextChannel):
+                try:
+                    old_message = await old_channel.fetch_message(verification_settings.panel_message_id)
+                    await old_message.delete()
+                except (discord.NotFound, discord.HTTPException):
+                    pass
+        else:
+            try:
+                existing_message = await channel.fetch_message(verification_settings.panel_message_id)
+                await existing_message.edit(embed=embed, view=VerificationView())
+                bot.add_view(VerificationView(), message_id=existing_message.id)
+                final_message_id = existing_message.id
+            except discord.NotFound:
+                message = await channel.send(embed=embed, view=VerificationView())
+                bot.add_view(VerificationView(), message_id=message.id)
+                final_message_id = message.id
+            except discord.HTTPException:
+                return web.json_response({"error": "verification_panel_update_failed"}, status=500)
+
+        verification_settings = await verification_repo.upsert_settings(
+            guild_id=guild.id,
+            verification_channel_id=channel.id,
+            verified_role_id=verified_role.id,
+            panel_message_id=final_message_id,
+            captcha_type=captcha_type,
+        )
+        settings.verification_enabled = True
+
+    return web.json_response(
+        {
+            "saved": True,
+            "verification": _serialize_verification_settings(verification_settings, guild, enabled=True),
+        }
+    )
 
 
 async def update_ticket_panel(request: web.Request) -> web.Response:
@@ -992,7 +1137,7 @@ async def cors_middleware(request: web.Request, handler):
         response.headers["Access-Control-Allow-Origin"] = request.headers.get("Origin", allowed_origin).rstrip("/")
         response.headers["Vary"] = "Origin"
         response.headers["Access-Control-Allow-Headers"] = "Authorization, Content-Type, X-Rysio-Panel-Token"
-        response.headers["Access-Control-Allow-Methods"] = "GET, POST, PATCH, DELETE, OPTIONS"
+        response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, PATCH, DELETE, OPTIONS"
     return response
 
 
@@ -1019,6 +1164,7 @@ def create_web_app(database: DatabaseSessionManager, api_token: str, allowed_ori
     app.router.add_get("/api/panel/session", get_panel_session)
     app.router.add_get("/api/guilds/{guild_id:\\d+}/logs", get_guild_logs)
     app.router.add_get("/api/guilds/{guild_id:\\d+}/overview", get_guild_overview)
+    app.router.add_put("/api/guilds/{guild_id:\\d+}/verification", save_verification_settings)
     app.router.add_post("/api/guilds/{guild_id:\\d+}/notifications", create_notification_subscription)
     app.router.add_patch("/api/guilds/{guild_id:\\d+}/notifications/{subscription_id:\\d+}", update_notification_subscription)
     app.router.add_delete("/api/guilds/{guild_id:\\d+}/notifications/{subscription_id:\\d+}", delete_notification_subscription)

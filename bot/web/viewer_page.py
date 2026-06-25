@@ -10,23 +10,27 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Rysio Control Panel</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
   <style>
     :root {{
       color-scheme: dark;
-      --bg: #091018;
-      --panel: rgba(16, 24, 36, 0.9);
-      --panel-strong: rgba(23, 35, 51, 0.96);
-      --panel-soft: rgba(21, 30, 44, 0.82);
-      --text: #eef4fb;
-      --muted: #94a6b8;
-      --accent: #63e0ff;
-      --accent-soft: rgba(99, 224, 255, 0.14);
-      --brand: #738bff;
+      --bg: #2d333b;
+      --panel: rgba(52, 59, 68, 0.9);
+      --panel-strong: rgba(58, 66, 77, 0.96);
+      --panel-soft: rgba(53, 60, 70, 0.92);
+      --text: #f7fbff;
+      --muted: #c5d3e4;
+      --accent: #8fd8ff;
+      --accent-soft: rgba(143, 216, 255, 0.16);
+      --brand: #5b88ff;
+      --brand-soft: #72acff;
       --green: #7bf0c3;
       --yellow: #ffd779;
       --danger: #ff8585;
-      --border: rgba(255, 255, 255, 0.12);
-      --shadow: 0 24px 80px rgba(0, 0, 0, 0.42);
+      --border: rgba(255, 255, 255, 0.08);
+      --shadow: 0 20px 50px rgba(0, 0, 0, 0.16);
       --radius: 22px;
     }}
 
@@ -34,49 +38,83 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
     body {{
       margin: 0;
       min-height: 100vh;
-      font-family: Consolas, "Courier New", monospace;
+      font-family: "Space Grotesk", sans-serif;
       color: var(--text);
       background:
-        radial-gradient(circle at top left, rgba(99, 224, 255, 0.16), transparent 26%),
-        radial-gradient(circle at top right, rgba(115, 139, 255, 0.14), transparent 24%),
-        linear-gradient(180deg, #081018 0%, #0d1520 100%);
+        radial-gradient(circle at top left, rgba(122, 220, 255, 0.12), transparent 22%),
+        radial-gradient(circle at top right, rgba(91, 136, 255, 0.12), transparent 20%),
+        linear-gradient(180deg, #2d333b 0%, #313841 100%);
     }}
 
     .page {{ width: min(1460px, calc(100% - 28px)); margin: 18px auto 42px; }}
     .topbar {{
       display: flex; justify-content: space-between; align-items: center; gap: 16px;
       padding: 14px 18px; margin-bottom: 18px; border-radius: 20px; border: 1px solid var(--border);
-      background: rgba(14, 22, 33, 0.82); box-shadow: var(--shadow); backdrop-filter: blur(14px); flex-wrap: wrap;
+      background: rgba(58, 65, 74, 0.94); box-shadow: var(--shadow); backdrop-filter: blur(14px); flex-wrap: wrap;
     }}
     .brand {{ display: flex; flex-direction: column; gap: 4px; }}
-    .brand-mark {{ display: inline-flex; align-items: center; gap: 10px; font-size: 30px; font-weight: 700; letter-spacing: 0.04em; }}
-    .brand-sub {{ color: var(--muted); font-size: 13px; max-width: 840px; }}
+    .brand-mark {{ display: inline-flex; align-items: center; gap: 10px; font-size: 28px; font-weight: 700; letter-spacing: -0.03em; }}
+    .brand-sub {{ color: var(--muted); font-size: 13px; max-width: 840px; line-height: 1.5; }}
     .top-actions {{ display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }}
+    .session-summary {{ display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }}
+    .summary-card {{
+      display: inline-flex; align-items: center; gap: 10px; padding: 8px 12px; min-height: 54px;
+      border-radius: 999px; border: 1px solid var(--border); background: rgba(47, 55, 66, 0.98);
+      min-width: 220px;
+    }}
+    .summary-avatar {{
+      width: 36px; height: 36px; border-radius: 50%; object-fit: cover; display: none;
+      border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(255,255,255,0.08);
+    }}
+    .summary-avatar.visible {{ display: block; }}
+    .summary-copy {{ display: flex; flex-direction: column; gap: 2px; line-height: 1.15; }}
+    .summary-title {{ font-size: 14px; font-weight: 700; color: var(--text); }}
+    .summary-sub {{ font-size: 12px; color: var(--muted); }}
     .pill {{
       display: inline-flex; align-items: center; gap: 8px; padding: 10px 14px; border-radius: 999px;
-      border: 1px solid var(--border); background: rgba(9, 14, 20, 0.92); color: var(--muted); font-size: 13px;
+      border: 1px solid var(--border); background: rgba(47, 55, 66, 0.98); color: var(--muted); font-size: 13px;
     }}
-    .layout {{ display: grid; grid-template-columns: 320px minmax(0, 1fr); gap: 18px; }}
+    .layout {{ display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: 18px; }}
+    .layout.gated {{ grid-template-columns: 1fr; }}
     .sidebar, .content-shell {{
-      border: 1px solid var(--border); border-radius: 24px; background: rgba(16, 24, 36, 0.9);
+      border: 1px solid var(--border); border-radius: 24px; background: rgba(52, 59, 68, 0.92);
       box-shadow: var(--shadow); backdrop-filter: blur(14px);
     }}
     .sidebar {{ padding: 18px; display: grid; gap: 16px; align-content: start; }}
     .content-shell {{ padding: 18px; display: grid; gap: 18px; }}
+    .workspace {{ display: grid; gap: 18px; }}
+    .hidden {{ display: none !important; }}
     .block, .hero, .metric, .card, .entry {{
       border: 1px solid var(--border); border-radius: var(--radius);
       background: linear-gradient(180deg, var(--panel-strong), var(--panel-soft)); padding: 16px;
+      transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+    }}
+    .metric:hover, .card:hover, .entry:hover, .panel-card:hover, .ticket-card:hover {{
+      transform: translateY(-3px);
+      border-color: rgba(143, 216, 255, 0.18);
+      box-shadow: 0 18px 38px rgba(0, 0, 0, 0.18);
     }}
     .hero {{
       padding: 20px;
-      background: linear-gradient(135deg, rgba(99, 224, 255, 0.12), rgba(115, 139, 255, 0.1)), linear-gradient(180deg, var(--panel-strong), var(--panel-soft));
+      background: linear-gradient(135deg, rgba(77, 121, 255, 0.2), rgba(106, 168, 255, 0.2)), linear-gradient(180deg, var(--panel-strong), var(--panel-soft));
     }}
+    .gate-card {{
+      max-width: 760px;
+      margin: 0 auto;
+      text-align: center;
+      padding: 28px;
+    }}
+    .gate-card h1 {{ margin-bottom: 14px; }}
+    .gate-card p {{ max-width: 560px; margin: 0 auto; }}
+    .gate-actions {{ display: flex; justify-content: center; gap: 12px; flex-wrap: wrap; margin-top: 18px; }}
+    .gate-actions button {{ width: auto; min-width: 180px; }}
     h1, h2, h3, p {{ margin: 0; }}
-    h1 {{ font-size: clamp(30px, 4vw, 44px); line-height: 0.98; margin-bottom: 10px; }}
+    h1 {{ font-size: clamp(30px, 4vw, 44px); line-height: 0.98; margin-bottom: 10px; letter-spacing: -0.04em; }}
     h2 {{ font-size: 18px; margin-bottom: 12px; }}
     h3 {{ font-size: 15px; margin-bottom: 10px; }}
     .muted, .hint, .meta, .empty, .error {{ color: var(--muted); }}
-    .empty {{ padding: 12px; border-radius: 14px; border: 1px dashed var(--border); background: rgba(8, 12, 18, 0.52); }}
+    .empty {{ padding: 12px; border-radius: 14px; border: 1px dashed var(--border); background: rgba(47, 55, 66, 0.68); }}
     .metrics, .ticket-grid, .log-grid {{ display: grid; gap: 14px; }}
     .metrics {{ grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }}
     .ticket-grid {{ grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }}
@@ -85,43 +123,67 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
     .status-row {{ display: flex; gap: 10px; flex-wrap: wrap; margin-top: 16px; }}
     .status-chip {{
       display: inline-flex; align-items: center; gap: 8px; padding: 9px 12px; border-radius: 999px;
-      font-size: 12px; border: 1px solid var(--border); background: rgba(9, 14, 20, 0.85);
+      font-size: 12px; border: 1px solid var(--border); background: rgba(47, 55, 66, 0.95);
     }}
     .good {{ color: var(--green); border-color: rgba(123, 240, 195, 0.35); background: rgba(123, 240, 195, 0.08); }}
     .warn {{ color: var(--yellow); border-color: rgba(255, 215, 121, 0.35); background: rgba(255, 215, 121, 0.08); }}
     label {{ display: block; margin-bottom: 8px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }}
     input, select, textarea, button {{
       width: 100%; padding: 12px 14px; border-radius: 14px; border: 1px solid var(--border);
-      background: rgba(8, 12, 18, 0.94); color: var(--text); font: inherit;
+      background: rgba(43, 50, 60, 0.98); color: var(--text); font: inherit;
     }}
     textarea {{ min-height: 110px; resize: vertical; }}
     button {{
-      cursor: pointer; background: linear-gradient(135deg, rgba(99, 224, 255, 0.18), rgba(115, 139, 255, 0.18));
+      cursor: pointer; background: linear-gradient(135deg, rgba(77, 121, 255, 0.34), rgba(106, 168, 255, 0.26));
       transition: transform 0.15s ease, border-color 0.15s ease, filter 0.15s ease;
+      font-weight: 700;
     }}
-    button:hover {{ transform: translateY(-1px); border-color: rgba(99, 224, 255, 0.55); filter: brightness(1.05); }}
+    button:hover {{ transform: translateY(-1px); border-color: rgba(143, 216, 255, 0.4); filter: brightness(1.05); }}
     button:disabled {{ opacity: 0.55; cursor: not-allowed; transform: none; filter: none; }}
-    .ghost {{ background: rgba(8, 12, 18, 0.94); }}
+    .ghost {{ background: rgba(43, 50, 60, 0.98); }}
     .danger-button {{ background: linear-gradient(135deg, rgba(255, 133, 133, 0.18), rgba(255, 80, 80, 0.16)); }}
     .button-row {{ display: flex; gap: 12px; flex-wrap: wrap; }}
     .button-row button {{ width: auto; min-width: 150px; }}
     .stack {{ display: grid; gap: 14px; }}
-    .login-box {{ background: linear-gradient(135deg, rgba(88, 101, 242, 0.18), rgba(99, 224, 255, 0.06)), linear-gradient(180deg, var(--panel-strong), var(--panel-soft)); }}
-    .discord-button {{ background: linear-gradient(135deg, rgba(88, 101, 242, 0.32), rgba(88, 101, 242, 0.18)); border-color: rgba(88, 101, 242, 0.45); }}
-    .session-box {{ margin-top: 14px; padding: 12px; border-radius: 14px; border: 1px solid var(--border); background: rgba(8, 12, 18, 0.7); }}
+    .sidebar-title {{
+      font-size: 12px; text-transform: uppercase; letter-spacing: 0.14em; color: var(--muted);
+      margin-bottom: 6px;
+    }}
+    .sidebar-nav {{ display: grid; gap: 10px; }}
+    .nav-button {{
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      text-align: left; background: rgba(43, 50, 60, 0.98); color: var(--text);
+    }}
+    .nav-button span:last-child {{
+      font-size: 11px; color: var(--muted); padding: 4px 8px; border-radius: 999px;
+      border: 1px solid var(--border); background: rgba(255,255,255,0.03);
+    }}
+    .nav-button.active {{
+      border-color: rgba(143, 216, 255, 0.4);
+      background: linear-gradient(135deg, rgba(77, 121, 255, 0.34), rgba(106, 168, 255, 0.26));
+      box-shadow: 0 14px 32px rgba(0, 0, 0, 0.18);
+    }}
+    .nav-hint {{
+      padding: 12px 14px; border-radius: 16px; border: 1px solid var(--border);
+      background: rgba(47, 55, 66, 0.72); color: var(--muted); font-size: 13px; line-height: 1.5;
+    }}
+    .login-box {{ background: linear-gradient(135deg, rgba(77, 121, 255, 0.22), rgba(106, 168, 255, 0.1)), linear-gradient(180deg, var(--panel-strong), var(--panel-soft)); }}
+    .discord-button {{ background: linear-gradient(135deg, rgba(77, 121, 255, 0.42), rgba(106, 168, 255, 0.24)); border-color: rgba(106, 168, 255, 0.4); }}
+    .session-box {{ margin-top: 14px; padding: 12px; border-radius: 14px; border: 1px solid var(--border); background: rgba(47, 55, 66, 0.74); }}
     .session-name {{ color: var(--text); margin-bottom: 8px; }}
     .small {{ font-size: 12px; }}
     .panel-list, .ticket-list, .entry-list {{ display: grid; gap: 14px; }}
+    .panel-view-title {{ margin-bottom: 8px; }}
     .panel-card, .ticket-card {{
       border: 1px solid var(--border); border-radius: 18px; padding: 14px;
-      background: linear-gradient(180deg, rgba(17, 25, 37, 0.92), rgba(13, 20, 31, 0.82));
+      background: linear-gradient(180deg, rgba(57, 64, 75, 0.96), rgba(52, 59, 68, 0.94));
     }}
     .panel-head, .ticket-head, .entry-head {{
       display: flex; justify-content: space-between; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 12px;
     }}
     .panel-tag, .ticket-tag, .entry-type {{
       display: inline-flex; align-items: center; padding: 6px 10px; border-radius: 999px;
-      background: rgba(99, 224, 255, 0.12); border: 1px solid rgba(99, 224, 255, 0.34); color: var(--accent); font-size: 12px;
+      background: rgba(143, 216, 255, 0.12); border: 1px solid rgba(143, 216, 255, 0.28); color: var(--accent); font-size: 12px;
     }}
     .ticket-tag.warn-tag {{
       background: rgba(255, 215, 121, 0.12);
@@ -131,16 +193,18 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
     .panel-meta, .ticket-meta {{ display: grid; gap: 8px; color: var(--muted); font-size: 13px; margin-top: 10px; }}
     .ticket-note-list {{ display: grid; gap: 8px; margin-top: 12px; }}
     .ticket-note {{
-      padding: 10px; border-radius: 12px; border: 1px solid var(--border); background: rgba(8, 12, 18, 0.66);
+      padding: 10px; border-radius: 12px; border: 1px solid var(--border); background: rgba(47, 55, 66, 0.7);
     }}
     pre {{
-      margin: 0; padding: 12px; border-radius: 14px; background: rgba(5, 9, 14, 0.9);
+      margin: 0; padding: 12px; border-radius: 14px; background: rgba(35, 41, 49, 0.96);
       border: 1px solid var(--border); color: #dbe8f5; white-space: pre-wrap; word-break: break-word; overflow-x: auto;
+      font-family: Consolas, "Courier New", monospace;
     }}
     @media (max-width: 1100px) {{ .layout, .ticket-grid {{ grid-template-columns: 1fr; }} }}
     @media (max-width: 720px) {{
       .page {{ width: calc(100% - 18px); margin: 10px auto 24px; }}
       .topbar, .sidebar, .content-shell {{ padding: 14px; }}
+      .summary-card {{ min-width: 100%; }}
     }}
   </style>
 </head>
@@ -149,77 +213,83 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
     <header class="topbar">
       <div class="brand">
         <div class="brand-mark">RYSIO PANEL</div>
-        <div class="brand-sub">Ticket-Panels lassen sich jetzt nicht nur erstellen, sondern auch bearbeiten. Dazu kommt eine Web-Uebersicht fuer offene Tickets mit Claim, Status, Team-Notizen und Close direkt aus dem Panel.</div>
+        <div class="brand-sub">Erst Discord Login, dann Server Auswahl, danach erst der eigentliche Workspace.</div>
       </div>
       <div class="top-actions">
-        <div class="pill">Build: Ticket Panel Beta</div>
-        <div class="pill">Focus: Support Teams</div>
+        <div class="session-summary">
+          <div class="summary-card">
+            <img id="headerUserAvatar" class="summary-avatar" alt="Discord Profilbild">
+            <div class="summary-copy">
+              <span id="headerUserName" class="summary-title">Nicht eingeloggt</span>
+              <span id="headerUserMeta" class="summary-sub">Discord Login erforderlich</span>
+            </div>
+          </div>
+          <div class="summary-card">
+            <img id="headerGuildAvatar" class="summary-avatar" alt="Server Bild">
+            <div class="summary-copy">
+              <span id="headerGuildName" class="summary-title">Kein Server ausgewaehlt</span>
+              <span id="headerGuildMeta" class="summary-sub">Waehle nach dem Login einen Server aus</span>
+            </div>
+          </div>
+          <button class="ghost hidden" type="button" id="changeGuildButton">Server wechseln</button>
+          <button class="ghost hidden" type="button" id="headerLogoutButton">Logout</button>
+        </div>
       </div>
     </header>
-    <div class="layout">
-      <aside class="sidebar">
-        <section class="block login-box">
-          <h2>Discord Login</h2>
-          <p class="muted">Login mit Discord statt eigene Accounts in deiner Datenbank. Die Rechte werden spaeter pro Team noch feiner getrennt.</p>
-          <div class="button-row" style="margin-top:14px;">
-            <button class="discord-button" type="button" id="discordLoginButton">Mit Discord anmelden</button>
-            <button class="ghost" type="button" id="discordLogoutButton">Discord Logout</button>
+    <div class="layout gated" id="panelLayout">
+      <aside class="sidebar hidden" id="panelSidebar">
+        <section class="block">
+          <div class="sidebar-title">Navigation</div>
+          <div class="sidebar-nav">
+            <button class="nav-button active" type="button" data-nav-view="overview"><span>Overview</span><span>Start</span></button>
+            <button class="nav-button" type="button" data-nav-view="notifications"><span>Notifications</span><span>Live</span></button>
+            <button class="nav-button" type="button" data-nav-view="verification"><span>Verification</span><span>Access</span></button>
+            <button class="nav-button" type="button" data-nav-view="tickets"><span>Tickets</span><span>Support</span></button>
+            <button class="nav-button" type="button" data-nav-view="logs"><span>Logs</span><span>Audit</span></button>
+            <button class="nav-button" type="button" data-nav-view="connection"><span>Verbindung</span><span>API</span></button>
           </div>
-          <div class="session-box">
+        </section>
+        <section class="nav-hint">
+          Links waehlt man nur den Bereich. In der Mitte wird immer genau der aktive Workspace gezeigt.
+        </section>
+      </aside>
+      <section class="content-shell">
+        <section class="hero gate-card" id="authGate">
+          <h1>Login zuerst</h1>
+          <p class="muted">Ohne Discord Anmeldung kommst du nicht in das Panel. Danach kannst du im naechsten Schritt deinen Server auswaehlen.</p>
+          <div class="gate-actions">
+            <button class="discord-button" type="button" id="discordLoginButton">Mit Discord anmelden</button>
+          </div>
+          <div class="session-box" style="margin-top:18px;">
             <p class="session-name" id="sessionUserText">Noch nicht eingeloggt.</p>
             <p class="hint small" id="sessionGuildCountText">0 verwaltbare Server von Discord geladen.</p>
             <p class="hint small" id="oauthErrorText" hidden></p>
           </div>
         </section>
-        <section class="block">
-          <h2>Server Auswahl</h2>
-          <label for="guildSelect">Discord Server</label>
-          <select id="guildSelect">
-            <option value="">Server auswaehlen</option>
-          </select>
-          <div class="session-box" style="margin-top:12px;">
+
+        <section class="hero gate-card hidden" id="guildGate">
+          <h1>Server auswaehlen</h1>
+          <p class="muted">Dein Discord Login ist aktiv. Waehle jetzt den Server aus, den du im Panel verwalten willst.</p>
+          <div class="stack" style="max-width:520px; margin:18px auto 0;">
+            <div>
+              <label for="guildSelect">Discord Server</label>
+              <select id="guildSelect">
+                <option value="">Server auswaehlen</option>
+              </select>
+            </div>
+          </div>
+          <div class="gate-actions">
+            <button type="button" id="selectGuildButton">Server laden</button>
+          </div>
+          <div class="session-box" style="margin-top:18px; max-width:520px; margin-left:auto; margin-right:auto;">
             <p class="small">Guild ID</p>
             <p id="selectedGuildIdText" class="session-name">-</p>
             <p id="selectedGuildNameText" class="hint small">Noch kein Server ausgewaehlt.</p>
           </div>
         </section>
-        <section class="block">
-          <h2>API Verbindung</h2>
-          <div class="stack">
-            <div>
-              <label for="apiBaseUrl">API Base URL</label>
-              <input id="apiBaseUrl" placeholder="https://api.deinedomain.de" value="{api_base_url}">
-            </div>
-            <div>
-              <label for="apiToken">Fallback API Token</label>
-              <input id="apiToken" type="password" placeholder="Nur noetig ohne Discord-Session">
-            </div>
-            <div>
-              <label for="limit">Log Limit</label>
-              <input id="limit" type="number" min="1" max="200" value="25">
-            </div>
-            <div>
-              <label for="eventType">Event Filter</label>
-              <select id="eventType">
-                <option value="">Alle</option>
-                <option value="member.join">member.join</option>
-                <option value="member.leave">member.leave</option>
-                <option value="message.delete">message.delete</option>
-                <option value="message.edit">message.edit</option>
-                <option value="voice.join">voice.join</option>
-                <option value="voice.leave">voice.leave</option>
-                <option value="voice.move">voice.move</option>
-              </select>
-            </div>
-          </div>
-          <div class="button-row" style="margin-top:14px;">
-            <button id="loadButton" type="button">Logs laden</button>
-            <button id="saveButton" type="button" class="ghost">Panel Daten speichern</button>
-          </div>
-        </section>
-      </aside>
-      <section class="content-shell">
-        <section class="hero">
+
+        <div id="panelWorkspace" class="workspace hidden">
+        <section class="hero panel-view" data-panel-view="overview">
           <h1>Tickets werden jetzt wirklich web-faehig</h1>
           <p class="muted">Das ist der Schritt vom reinen Tech-Demo-Panel zum ersten echten Support-Panel. Panels koennen bearbeitet werden und offene Tickets werden im Browser sichtbar und bedienbar.</p>
           <div class="status-row">
@@ -229,17 +299,17 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
             <span class="status-chip warn">Moderation danach</span>
           </div>
         </section>
-        <section class="metrics">
+        <section class="metrics panel-view" data-panel-view="overview">
           <article class="metric"><h3>Verwaltbare Server</h3><div class="metric-value" id="guildCountStat">0</div><p class="muted">Kommt direkt aus deinem Discord Login.</p></article>
           <article class="metric"><h3>Notifications</h3><div class="metric-value" id="notificationCountStat">0</div><p class="muted">Twitch, Kick und YouTube pro Server.</p></article>
           <article class="metric"><h3>Ticket-Panels</h3><div class="metric-value" id="ticketPanelCountStat">0</div><p class="muted">Panels fuer den aktuell ausgewaehlten Server.</p></article>
           <article class="metric"><h3>Offene Tickets</h3><div class="metric-value" id="activeTicketCountStat">0</div><p class="muted">Open, claimed und waiting_user im Web.</p></article>
           <article class="metric"><h3>Geladene Logs</h3><div class="metric-value" id="loadedStat">0</div><p class="muted">Audit-Logs bleiben parallel nutzbar.</p></article>
         </section>
-        <section class="card">
+        <section class="card panel-view hidden" data-panel-view="notifications">
           <div class="panel-head">
             <div>
-              <h2>Notification Manager</h2>
+              <h2 class="panel-view-title">Notifications</h2>
               <p class="muted">Benachrichtigungen fuer Twitch, Kick und YouTube direkt im Panel verwalten und manuell pruefen.</p>
             </div>
             <span class="panel-tag">Live Alerts</span>
@@ -289,10 +359,56 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
             </section>
           </div>
         </section>
-        <section class="card">
+        <section class="card panel-view hidden" data-panel-view="verification">
           <div class="panel-head">
             <div>
-              <h2>Ticket Panel Manager</h2>
+              <h2 class="panel-view-title">Verification</h2>
+              <p class="muted">Lege fest, in welchem Channel das Verification-Panel steht und welche Rolle nach erfolgreicher Verifikation vergeben wird.</p>
+            </div>
+            <span class="panel-tag">Access Setup</span>
+          </div>
+          <div class="ticket-grid">
+            <section class="card">
+              <h3 id="verificationFormHeading">Verification einrichten</h3>
+              <div class="stack">
+                <div>
+                  <label for="verificationChannelSelect">Verification Channel</label>
+                  <select id="verificationChannelSelect">
+                    <option value="">Channel auswaehlen</option>
+                  </select>
+                </div>
+                <div>
+                  <label for="verificationRoleSelect">Verified Rolle</label>
+                  <select id="verificationRoleSelect">
+                    <option value="">Rolle auswaehlen</option>
+                  </select>
+                </div>
+                <div>
+                  <label for="verificationCaptchaSelect">Captcha / Methode</label>
+                  <select id="verificationCaptchaSelect">
+                    <option value="button">Button</option>
+                  </select>
+                </div>
+              </div>
+              <div class="button-row" style="margin-top:14px;">
+                <button id="saveVerificationButton" type="button">Verification speichern</button>
+                <button id="resetVerificationButton" type="button" class="ghost">Formular zuruecksetzen</button>
+              </div>
+              <p id="verificationStatusText" class="meta" style="margin-top:12px;">Bereit.</p>
+              <p id="verificationErrorText" class="error" hidden style="margin-top:8px;"></p>
+            </section>
+            <section class="card">
+              <h3>Aktuelle Verification</h3>
+              <div id="verificationCurrentCard" class="panel-list">
+                <div class="empty">Noch kein Server geladen.</div>
+              </div>
+            </section>
+          </div>
+        </section>
+        <section class="card panel-view hidden" data-panel-view="tickets">
+          <div class="panel-head">
+            <div>
+              <h2 class="panel-view-title">Tickets</h2>
               <p class="muted">Neue Panels erstellen oder bestehende Panels im gleichen Formular bearbeiten.</p>
             </div>
             <span class="panel-tag">Create + Edit</span>
@@ -346,7 +462,7 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
             </section>
           </div>
         </section>
-        <section class="card">
+        <section class="card panel-view hidden" data-panel-view="tickets">
           <div class="ticket-head">
             <div>
               <h2>Offene Tickets im Web</h2>
@@ -358,13 +474,54 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
             <div class="empty">Noch kein Server geladen.</div>
           </div>
         </section>
-        <section class="card">
-          <h2>Audit Logs</h2>
+        <section class="card panel-view hidden" data-panel-view="logs">
+          <h2 class="panel-view-title">Audit Logs</h2>
           <p class="muted">Die Logs bleiben live nutzbar und helfen spaeter fuer Moderation, Tickets und Support-Kontext.</p>
           <p id="statusText" class="meta" style="margin-top:12px;">Bereit.</p>
           <p id="errorText" class="error" hidden style="margin-top:8px;"></p>
           <section id="entries" class="entry-list" style="margin-top:16px;"><div class="empty">Noch keine Daten geladen.</div></section>
         </section>
+        <section class="card panel-view hidden" data-panel-view="connection">
+          <div class="panel-head">
+            <div>
+              <h2 class="panel-view-title">API Verbindung</h2>
+              <p class="muted">Nur noch als eigener Bereich. Morgen koennen wir das komplett auf `api.rysio.app` umstellen und spaeter noch weiter verstecken.</p>
+            </div>
+            <span class="panel-tag">Connection</span>
+          </div>
+          <div class="stack">
+            <div>
+              <label for="apiBaseUrl">API Base URL</label>
+              <input id="apiBaseUrl" placeholder="https://api.deinedomain.de" value="{api_base_url}">
+            </div>
+            <div>
+              <label for="apiToken">Fallback API Token</label>
+              <input id="apiToken" type="password" placeholder="Nur noetig ohne Discord-Session">
+            </div>
+            <div>
+              <label for="limit">Log Limit</label>
+              <input id="limit" type="number" min="1" max="200" value="25">
+            </div>
+            <div>
+              <label for="eventType">Event Filter</label>
+              <select id="eventType">
+                <option value="">Alle</option>
+                <option value="member.join">member.join</option>
+                <option value="member.leave">member.leave</option>
+                <option value="message.delete">message.delete</option>
+                <option value="message.edit">message.edit</option>
+                <option value="voice.join">voice.join</option>
+                <option value="voice.leave">voice.leave</option>
+                <option value="voice.move">voice.move</option>
+              </select>
+            </div>
+          </div>
+          <div class="button-row" style="margin-top:14px;">
+            <button id="loadButton" type="button">Logs laden</button>
+            <button id="saveButton" type="button" class="ghost">Panel Daten speichern</button>
+          </div>
+        </section>
+        </div>
       </section>
     </div>
   </main>
@@ -390,6 +547,22 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
     const sessionGuildCountText = document.getElementById("sessionGuildCountText");
     const selectedGuildIdText = document.getElementById("selectedGuildIdText");
     const selectedGuildNameText = document.getElementById("selectedGuildNameText");
+    const panelLayout = document.getElementById("panelLayout");
+    const panelSidebar = document.getElementById("panelSidebar");
+    const panelWorkspace = document.getElementById("panelWorkspace");
+    const panelViewButtons = [...document.querySelectorAll("[data-nav-view]")];
+    const panelViews = [...document.querySelectorAll("[data-panel-view]")];
+    const authGate = document.getElementById("authGate");
+    const guildGate = document.getElementById("guildGate");
+    const selectGuildButton = document.getElementById("selectGuildButton");
+    const headerUserAvatar = document.getElementById("headerUserAvatar");
+    const headerUserName = document.getElementById("headerUserName");
+    const headerUserMeta = document.getElementById("headerUserMeta");
+    const headerGuildAvatar = document.getElementById("headerGuildAvatar");
+    const headerGuildName = document.getElementById("headerGuildName");
+    const headerGuildMeta = document.getElementById("headerGuildMeta");
+    const changeGuildButton = document.getElementById("changeGuildButton");
+    const headerLogoutButton = document.getElementById("headerLogoutButton");
     const ticketChannelSelect = document.getElementById("ticketChannelSelect");
     const ticketCategorySelect = document.getElementById("ticketCategorySelect");
     const ticketSupportRoleSelect = document.getElementById("ticketSupportRoleSelect");
@@ -411,9 +584,21 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
     const cancelNotificationEditButton = document.getElementById("cancelNotificationEditButton");
     const notificationStatusText = document.getElementById("notificationStatusText");
     const notificationErrorText = document.getElementById("notificationErrorText");
+    const verificationChannelSelect = document.getElementById("verificationChannelSelect");
+    const verificationRoleSelect = document.getElementById("verificationRoleSelect");
+    const verificationCaptchaSelect = document.getElementById("verificationCaptchaSelect");
+    const verificationCurrentCard = document.getElementById("verificationCurrentCard");
+    const verificationFormHeading = document.getElementById("verificationFormHeading");
+    const saveVerificationButton = document.getElementById("saveVerificationButton");
+    const resetVerificationButton = document.getElementById("resetVerificationButton");
+    const verificationStatusText = document.getElementById("verificationStatusText");
+    const verificationErrorText = document.getElementById("verificationErrorText");
 
     let sessionToken = "";
+    let preferredGuildId = "";
     let currentOverview = null;
+    let currentSession = null;
+    let currentPanelView = "overview";
     let editingPanelId = null;
     let editingNotificationId = null;
 
@@ -423,6 +608,74 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
 
     function normalizeBaseUrl(value) {{
       return value.trim().replace(/\\/$/, "");
+    }}
+
+    function defaultAvatarUrl() {{
+      return "https://cdn.discordapp.com/embed/avatars/0.png";
+    }}
+
+    function getDiscordAvatarUrl(user) {{
+      if (!user?.id) return defaultAvatarUrl();
+      if (!user?.avatar) return defaultAvatarUrl();
+      return `https://cdn.discordapp.com/avatars/${{user.id}}/${{user.avatar}}.png?size=128`;
+    }}
+
+    function getGuildIconUrl(guild) {{
+      if (!guild?.id || !guild?.icon) return "";
+      return `https://cdn.discordapp.com/icons/${{guild.id}}/${{guild.icon}}.png?size=128`;
+    }}
+
+    function setAvatarImage(image, url, alt) {{
+      if (!url) {{
+        image.removeAttribute("src");
+        image.classList.remove("visible");
+        image.alt = alt;
+        return;
+      }}
+      image.src = url;
+      image.alt = alt;
+      image.classList.add("visible");
+    }}
+
+    function updateHeaderGuild() {{
+      const guildId = guildSelect.value || preferredGuildId || "";
+      const guild = currentSession?.guilds?.find((entry) => String(entry.id) === String(guildId));
+      if (!guild) {{
+        headerGuildName.textContent = "Kein Server ausgewaehlt";
+        headerGuildMeta.textContent = currentSession ? "Waehle einen Server aus" : "Waehle nach dem Login einen Server aus";
+        setAvatarImage(headerGuildAvatar, "", "Kein Server");
+        return;
+      }}
+      headerGuildName.textContent = guild.name || "Discord Server";
+      headerGuildMeta.textContent = guild.bot_in_guild ? "Server bereit fuer das Panel" : "Bot ist noch nicht auf dem Server";
+      setAvatarImage(headerGuildAvatar, getGuildIconUrl(guild), `${{guild.name}} Icon`);
+    }}
+
+    function setActivePanelView(view) {{
+      currentPanelView = view || "overview";
+      for (const button of panelViewButtons) {{
+        button.classList.toggle("active", button.getAttribute("data-nav-view") === currentPanelView);
+      }}
+      for (const viewSection of panelViews) {{
+        viewSection.classList.toggle("hidden", viewSection.getAttribute("data-panel-view") !== currentPanelView);
+      }}
+    }}
+
+    function updateGateState() {{
+      const hasSession = Boolean(sessionToken && currentSession);
+      const hasGuild = Boolean(guildSelect.value);
+      panelLayout.classList.toggle("gated", !hasSession || !hasGuild);
+      panelSidebar.classList.toggle("hidden", !hasSession || !hasGuild);
+      panelWorkspace.classList.toggle("hidden", !hasSession || !hasGuild);
+      authGate.classList.toggle("hidden", hasSession);
+      guildGate.classList.toggle("hidden", !hasSession || hasGuild);
+      changeGuildButton.classList.toggle("hidden", !hasSession);
+      headerLogoutButton.classList.toggle("hidden", !hasSession);
+      selectGuildButton.disabled = !guildSelect.value;
+      if (hasSession && hasGuild) {{
+        setActivePanelView(currentPanelView);
+      }}
+      updateHeaderGuild();
     }}
 
     function getAuthHeaders() {{
@@ -448,6 +701,9 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
         ticketTitleInput.value = saved.ticketTitle || "Support Ticket";
         ticketDescriptionInput.value = saved.ticketDescription || "Klicke unten auf den Button, um ein Ticket zu erstellen.";
         ticketWelcomeInput.value = saved.ticketWelcome || "";
+        sessionToken = saved.sessionToken || "";
+        preferredGuildId = saved.selectedGuildId || "";
+        currentPanelView = saved.panelView || "overview";
       }} catch {{}}
     }}
 
@@ -460,6 +716,9 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
         ticketTitle: ticketTitleInput.value,
         ticketDescription: ticketDescriptionInput.value,
         ticketWelcome: ticketWelcomeInput.value,
+        sessionToken,
+        selectedGuildId: preferredGuildId || guildSelect.value || "",
+        panelView: currentPanelView,
       }}));
       statusText.textContent = "Panel-Daten lokal gespeichert.";
     }}
@@ -494,6 +753,16 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
       notificationErrorText.textContent = message;
     }}
 
+    function setVerificationError(message) {{
+      if (!message) {{
+        verificationErrorText.hidden = true;
+        verificationErrorText.textContent = "";
+        return;
+      }}
+      verificationErrorText.hidden = false;
+      verificationErrorText.textContent = message;
+    }}
+
     function resetTicketForm() {{
       editingPanelId = null;
       ticketFormHeading.textContent = "Neues Ticket-Panel erstellen";
@@ -516,6 +785,15 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
       notificationMentionRoleSelect.value = "";
       notificationStatusText.textContent = "Bereit.";
       setNotificationError("");
+    }}
+
+    function resetVerificationForm() {{
+      verificationFormHeading.textContent = "Verification einrichten";
+      verificationChannelSelect.value = currentOverview?.verification?.verification_channel_id || "";
+      verificationRoleSelect.value = currentOverview?.verification?.verified_role_id || "";
+      verificationCaptchaSelect.value = currentOverview?.verification?.captcha_type || "button";
+      verificationStatusText.textContent = "Bereit.";
+      setVerificationError("");
     }}
 
     function fillTicketForm(panel) {{
@@ -546,6 +824,27 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
       window.scrollTo({{ top: 0, behavior: "smooth" }});
     }}
 
+    function renderVerification(verification) {{
+      if (!verification || (!verification.verification_channel_id && !verification.verified_role_id)) {{
+        verificationCurrentCard.innerHTML = '<div class="empty">Verification ist fuer diesen Server noch nicht eingerichtet.</div>';
+        return;
+      }}
+      verificationCurrentCard.innerHTML = `
+        <article class="panel-card">
+          <div class="panel-head">
+            <strong>Verification aktiv</strong>
+            <span class="panel-tag">${{verification.enabled ? "Enabled" : "Pending"}}</span>
+          </div>
+          <div class="panel-meta">
+            <div>Channel: <strong>#${{escapeHtml(verification.verification_channel_name || "Unbekannt")}}</strong></div>
+            <div>Rolle: <strong>${{escapeHtml(verification.verified_role_name || "Unbekannt")}}</strong></div>
+            <div>Methode: <strong>${{escapeHtml(verification.captcha_type || "button")}}</strong></div>
+            <div>Message ID: <code>${{escapeHtml(verification.panel_message_id || "-")}}</code></div>
+          </div>
+        </article>
+      `;
+    }}
+
     function populateGuildSelect(guilds) {{
       const currentValue = guildSelect.value;
       guildSelect.innerHTML = '<option value="">Server auswaehlen</option>';
@@ -556,23 +855,33 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
         option.disabled = !guild.bot_in_guild;
         guildSelect.appendChild(option);
       }}
-      if (currentValue && [...guildSelect.options].some((option) => option.value === currentValue && !option.disabled)) {{
-        guildSelect.value = currentValue;
+      const nextValue = preferredGuildId || currentValue;
+      if (nextValue && [...guildSelect.options].some((option) => option.value === nextValue && !option.disabled)) {{
+        guildSelect.value = nextValue;
       }}
       guildCountStat.textContent = String(guilds.length);
     }}
 
     function renderSession(session) {{
+      currentSession = session;
       if (!session) {{
         sessionUserText.textContent = "Noch nicht eingeloggt.";
         sessionGuildCountText.textContent = "0 verwaltbare Server von Discord geladen.";
+        headerUserName.textContent = "Nicht eingeloggt";
+        headerUserMeta.textContent = "Discord Login erforderlich";
+        setAvatarImage(headerUserAvatar, "", "Kein User");
         populateGuildSelect([]);
+        updateGateState();
         return;
       }}
       const username = session.user?.global_name || session.user?.username || "Discord User";
       sessionUserText.textContent = `Eingeloggt als ${{username}}.`;
       sessionGuildCountText.textContent = `${{session.guilds.length}} verwaltbare Server von Discord geladen.`;
+       headerUserName.textContent = username;
+       headerUserMeta.textContent = `${{session.guilds.length}} verwaltbare Server`;
+       setAvatarImage(headerUserAvatar, getDiscordAvatarUrl(session.user), `${{username}} Avatar`);
       populateGuildSelect(session.guilds);
+      updateGateState();
     }}
 
     function renderNotifications(subscriptions) {{
@@ -732,9 +1041,13 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
       currentOverview = overview;
       selectedGuildIdText.textContent = overview.guild.id;
       selectedGuildNameText.textContent = overview.guild.name;
+      headerGuildName.textContent = overview.guild.name;
+      headerGuildMeta.textContent = "Aktuell ausgewaehlter Server";
+      updateHeaderGuild();
 
       ticketChannelSelect.innerHTML = '<option value="">Channel auswaehlen</option>';
       notificationChannelSelect.innerHTML = '<option value="">Channel auswaehlen</option>';
+      verificationChannelSelect.innerHTML = '<option value="">Channel auswaehlen</option>';
       for (const channel of overview.channels || []) {{
         const option = document.createElement("option");
         option.value = channel.id;
@@ -745,6 +1058,11 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
         notificationOption.value = channel.id;
         notificationOption.textContent = `#${{channel.name}}`;
         notificationChannelSelect.appendChild(notificationOption);
+
+        const verificationOption = document.createElement("option");
+        verificationOption.value = channel.id;
+        verificationOption.textContent = `#${{channel.name}}`;
+        verificationChannelSelect.appendChild(verificationOption);
       }}
 
       ticketCategorySelect.innerHTML = '<option value="">Keine Kategorie</option>';
@@ -757,6 +1075,7 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
 
       ticketSupportRoleSelect.innerHTML = '<option value="">Keine Support Rolle</option>';
       notificationMentionRoleSelect.innerHTML = '<option value="">Keine Mention Rolle</option>';
+      verificationRoleSelect.innerHTML = '<option value="">Rolle auswaehlen</option>';
       for (const role of overview.roles || []) {{
         const option = document.createElement("option");
         option.value = role.id;
@@ -767,11 +1086,18 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
         notificationRoleOption.value = role.id;
         notificationRoleOption.textContent = role.name;
         notificationMentionRoleSelect.appendChild(notificationRoleOption);
+
+        const verificationRoleOption = document.createElement("option");
+        verificationRoleOption.value = role.id;
+        verificationRoleOption.textContent = role.name;
+        verificationRoleSelect.appendChild(verificationRoleOption);
       }}
 
       renderNotifications(overview.notifications || []);
+      renderVerification(overview.verification || null);
       renderTicketPanels(overview.ticket_panels || []);
       renderActiveTickets(overview.active_tickets || []);
+      resetVerificationForm();
     }}
 
     function readHashState() {{
@@ -779,7 +1105,10 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
       const params = new URLSearchParams(fragment);
       const token = params.get("rysio_panel_token") || "";
       const oauthError = params.get("rysio_oauth_error") || "";
-      if (token) sessionToken = token;
+      if (token) {{
+        sessionToken = token;
+        saveState();
+      }}
       if (oauthError) setOauthError(`Discord Login Fehler: ${{oauthError}}`);
       if (fragment) history.replaceState(null, "", window.location.pathname + window.location.search);
     }}
@@ -797,11 +1126,14 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
         if (!response.ok) throw new Error(payload.error || "session_failed");
         renderSession(payload);
         setOauthError("");
+        saveState();
       }} catch (error) {{
         sessionToken = "";
+        preferredGuildId = "";
         renderSession(null);
         setOauthError("Discord-Session ist ungueltig oder abgelaufen.");
         statusText.textContent = error.message || "Session konnte nicht geladen werden.";
+        saveState();
       }}
     }}
 
@@ -813,6 +1145,7 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
         selectedGuildIdText.textContent = "-";
         selectedGuildNameText.textContent = "Noch kein Server ausgewaehlt.";
         notificationList.innerHTML = '<div class="empty">Waehle zuerst einen Server aus.</div>';
+        verificationCurrentCard.innerHTML = '<div class="empty">Waehle zuerst einen Server aus.</div>';
         ticketPanelsList.innerHTML = '<div class="empty">Waehle zuerst einen Server aus.</div>';
         activeTicketsList.innerHTML = '<div class="empty">Waehle zuerst einen Server aus.</div>';
         notificationCountStat.textContent = "0";
@@ -820,6 +1153,7 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
         activeTicketCountStat.textContent = "0";
         resetTicketForm();
         resetNotificationForm();
+        resetVerificationForm();
         return;
       }}
 
@@ -835,10 +1169,12 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
         renderOverview(payload);
         resetTicketForm();
         resetNotificationForm();
+        resetVerificationForm();
         statusText.textContent = `Serverdaten fuer ${{payload.guild.name}} geladen.`;
       }} catch (error) {{
         currentOverview = null;
         notificationList.innerHTML = '<div class="empty">Notifications konnten nicht geladen werden.</div>';
+        verificationCurrentCard.innerHTML = '<div class="empty">Verification konnte nicht geladen werden.</div>';
         ticketPanelsList.innerHTML = '<div class="empty">Serverdaten konnten nicht geladen werden.</div>';
         activeTicketsList.innerHTML = '<div class="empty">Tickets konnten nicht geladen werden.</div>';
         notificationCountStat.textContent = "0";
@@ -901,6 +1237,54 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
         setNotificationError(`Notification fehlgeschlagen: ${{error.message}}`);
         statusText.textContent = "Notification konnte nicht gespeichert werden.";
         notificationStatusText.textContent = "Notification konnte nicht gespeichert werden.";
+      }}
+    }}
+
+    async function saveVerification() {{
+      const guildId = guildSelect.value;
+      const apiBaseUrl = normalizeBaseUrl(apiBaseUrlInput.value || DEFAULT_API_BASE_URL);
+      const payload = {{
+        verification_channel_id: verificationChannelSelect.value,
+        verified_role_id: verificationRoleSelect.value,
+        captcha_type: verificationCaptchaSelect.value,
+      }};
+
+      if (!guildId) {{
+        setError("Bitte zuerst einen Discord Server auswaehlen.");
+        setVerificationError("Bitte zuerst einen Discord Server auswaehlen.");
+        verificationStatusText.textContent = "Verification konnte nicht gespeichert werden.";
+        return;
+      }}
+      if (!payload.verification_channel_id || !payload.verified_role_id) {{
+        setError("Bitte Verification-Channel und Verified Rolle auswaehlen.");
+        setVerificationError("Bitte Verification-Channel und Verified Rolle auswaehlen.");
+        verificationStatusText.textContent = "Pflichtfelder fehlen.";
+        return;
+      }}
+
+      setError("");
+      setVerificationError("");
+      statusText.textContent = "Verification wird gespeichert...";
+      verificationStatusText.textContent = "Verification wird gespeichert...";
+      try {{
+        const response = await fetch(`${{apiBaseUrl}}/api/guilds/${{guildId}}/verification`, {{
+          method: "PUT",
+          headers: {{
+            ...getAuthHeaders(),
+            "Content-Type": "application/json",
+          }},
+          body: JSON.stringify(payload),
+        }});
+        const body = await response.json();
+        if (!response.ok) throw new Error(body.error || `HTTP ${{response.status}}`);
+        await loadOverview();
+        verificationStatusText.textContent = "Verification gespeichert und Panel aktualisiert.";
+        statusText.textContent = "Verification gespeichert und Panel aktualisiert.";
+      }} catch (error) {{
+        setError(`Verification fehlgeschlagen: ${{error.message}}`);
+        setVerificationError(`Verification fehlgeschlagen: ${{error.message}}`);
+        verificationStatusText.textContent = "Verification konnte nicht gespeichert werden.";
+        statusText.textContent = "Verification konnte nicht gespeichert werden.";
       }}
     }}
 
@@ -1112,26 +1496,43 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
       }}
     }}
 
-    document.getElementById("loadButton").addEventListener("click", loadLogs);
+    for (const button of panelViewButtons) {{
+      button.addEventListener("click", () => {{
+        setActivePanelView(button.getAttribute("data-nav-view"));
+        saveState();
+      }});
+    }}
+
+    document.getElementById("loadButton").addEventListener("click", () => {{
+      setActivePanelView("logs");
+      saveState();
+      loadLogs();
+    }});
     document.getElementById("saveButton").addEventListener("click", saveState);
     document.getElementById("reloadOverviewButton").addEventListener("click", loadOverview);
     document.getElementById("saveTicketPanelButton").addEventListener("click", saveTicketPanel);
     cancelTicketEditButton.addEventListener("click", resetTicketForm);
     saveNotificationButton.addEventListener("click", saveNotification);
     cancelNotificationEditButton.addEventListener("click", resetNotificationForm);
+    saveVerificationButton.addEventListener("click", saveVerification);
+    resetVerificationButton.addEventListener("click", resetVerificationForm);
     document.getElementById("checkNotificationsButton").addEventListener("click", checkNotificationsNow);
     document.getElementById("discordLoginButton").addEventListener("click", () => {{
       const apiBaseUrl = normalizeBaseUrl(apiBaseUrlInput.value || DEFAULT_API_BASE_URL);
       window.location.href = `${{apiBaseUrl}}/api/oauth/discord/login`;
     }});
-    document.getElementById("discordLogoutButton").addEventListener("click", () => {{
+    function logoutPanelSession() {{
       sessionToken = "";
+      preferredGuildId = "";
       currentOverview = null;
+      currentSession = null;
+      currentPanelView = "overview";
       renderSession(null);
       guildSelect.value = "";
       selectedGuildIdText.textContent = "-";
       selectedGuildNameText.textContent = "Noch kein Server ausgewaehlt.";
       notificationList.innerHTML = '<div class="empty">Discord-Session getrennt.</div>';
+      verificationCurrentCard.innerHTML = '<div class="empty">Discord-Session getrennt.</div>';
       ticketPanelsList.innerHTML = '<div class="empty">Discord-Session getrennt.</div>';
       activeTicketsList.innerHTML = '<div class="empty">Discord-Session getrennt.</div>';
       notificationCountStat.textContent = "0";
@@ -1139,12 +1540,51 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
       activeTicketCountStat.textContent = "0";
       resetTicketForm();
       resetNotificationForm();
+      resetVerificationForm();
       setOauthError("");
       statusText.textContent = "Discord-Session lokal entfernt.";
+      saveState();
+      updateGateState();
+    }}
+    changeGuildButton.addEventListener("click", () => {{
+      guildSelect.value = "";
+      preferredGuildId = "";
+      currentOverview = null;
+      currentPanelView = "overview";
+      selectedGuildIdText.textContent = "-";
+      selectedGuildNameText.textContent = "Noch kein Server ausgewaehlt.";
+      notificationList.innerHTML = '<div class="empty">Waehle zuerst einen Server aus.</div>';
+      verificationCurrentCard.innerHTML = '<div class="empty">Waehle zuerst einen Server aus.</div>';
+      ticketPanelsList.innerHTML = '<div class="empty">Waehle zuerst einen Server aus.</div>';
+      activeTicketsList.innerHTML = '<div class="empty">Waehle zuerst einen Server aus.</div>';
+      notificationCountStat.textContent = "0";
+      ticketPanelCountStat.textContent = "0";
+      activeTicketCountStat.textContent = "0";
+      resetTicketForm();
+      resetNotificationForm();
+      resetVerificationForm();
+      saveState();
+      updateGateState();
+      statusText.textContent = "Bitte waehle einen anderen Server aus.";
     }});
-    guildSelect.addEventListener("change", loadOverview);
+    headerLogoutButton.addEventListener("click", logoutPanelSession);
+    selectGuildButton.addEventListener("click", () => {{
+      preferredGuildId = guildSelect.value;
+      saveState();
+      updateGateState();
+      loadOverview();
+    }});
+    guildSelect.addEventListener("change", () => {{
+      preferredGuildId = guildSelect.value;
+      selectedGuildIdText.textContent = guildSelect.value || "-";
+      const guild = currentSession?.guilds?.find((entry) => String(entry.id) === String(guildSelect.value));
+      selectedGuildNameText.textContent = guild?.name || "Noch kein Server ausgewaehlt.";
+      saveState();
+      updateGateState();
+    }});
 
     loadSavedState();
+    setActivePanelView(currentPanelView);
     readHashState();
     fetchPanelSession().then(() => {{
       if (guildSelect.value) loadOverview();
