@@ -659,6 +659,13 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
       for (const viewSection of panelViews) {{
         viewSection.classList.toggle("hidden", viewSection.getAttribute("data-panel-view") !== currentPanelView);
       }}
+      if (currentPanelView === "verification" && guildSelect.value) {{
+        if (!currentOverview) {{
+          loadOverview();
+        }} else {{
+          loadVerificationSettings();
+        }}
+      }}
     }}
 
     function updateGateState() {{
@@ -1100,6 +1107,31 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
       resetVerificationForm();
     }}
 
+    async function loadVerificationSettings() {{
+      const guildId = guildSelect.value;
+      const apiBaseUrl = normalizeBaseUrl(apiBaseUrlInput.value || DEFAULT_API_BASE_URL);
+      if (!guildId) {{
+        verificationCurrentCard.innerHTML = '<div class="empty">Waehle zuerst einen Server aus.</div>';
+        return;
+      }}
+
+      try {{
+        const response = await fetch(`${{apiBaseUrl}}/api/guilds/${{guildId}}/verification`, {{
+          headers: getAuthHeaders(),
+        }});
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || `HTTP ${{response.status}}`);
+        renderVerification(payload.verification || null);
+        if (currentOverview) {{
+          currentOverview.verification = payload.verification || null;
+          resetVerificationForm();
+        }}
+      }} catch (error) {{
+        setVerificationError(`Verification-Laden fehlgeschlagen: ${{error.message}}`);
+        verificationCurrentCard.innerHTML = '<div class="empty">Verification konnte nicht geladen werden.</div>';
+      }}
+    }}
+
     function readHashState() {{
       const fragment = window.location.hash.startsWith("#") ? window.location.hash.slice(1) : "";
       const params = new URLSearchParams(fragment);
@@ -1278,6 +1310,7 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
         const body = await response.json();
         if (!response.ok) throw new Error(body.error || `HTTP ${{response.status}}`);
         await loadOverview();
+        await loadVerificationSettings();
         verificationStatusText.textContent = "Verification gespeichert und Panel aktualisiert.";
         statusText.textContent = "Verification gespeichert und Panel aktualisiert.";
       }} catch (error) {{

@@ -407,6 +407,26 @@ async def get_guild_overview(request: web.Request) -> web.Response:
     return web.json_response(payload)
 
 
+async def get_guild_verification(request: web.Request) -> web.Response:
+    guild = await _get_authorized_guild(request)
+    if guild is None:
+        return _forbidden("guild_access_denied")
+
+    database: DatabaseSessionManager = request.app["database"]
+    async with database.session() as session:
+        guild_repo = GuildRepository(session)
+        verification_repo = VerificationRepository(session)
+        settings = await guild_repo.ensure_settings(guild.id)
+        verification = await verification_repo.get_settings(guild.id)
+
+    return web.json_response(
+        {
+            "guild_id": str(guild.id),
+            "verification": _serialize_verification_settings(verification, guild, enabled=bool(settings.verification_enabled)),
+        }
+    )
+
+
 async def create_notification_subscription(request: web.Request) -> web.Response:
     guild = await _get_authorized_guild(request)
     if guild is None:
@@ -1164,6 +1184,7 @@ def create_web_app(database: DatabaseSessionManager, api_token: str, allowed_ori
     app.router.add_get("/api/panel/session", get_panel_session)
     app.router.add_get("/api/guilds/{guild_id:\\d+}/logs", get_guild_logs)
     app.router.add_get("/api/guilds/{guild_id:\\d+}/overview", get_guild_overview)
+    app.router.add_get("/api/guilds/{guild_id:\\d+}/verification", get_guild_verification)
     app.router.add_put("/api/guilds/{guild_id:\\d+}/verification", save_verification_settings)
     app.router.add_post("/api/guilds/{guild_id:\\d+}/notifications", create_notification_subscription)
     app.router.add_patch("/api/guilds/{guild_id:\\d+}/notifications/{subscription_id:\\d+}", update_notification_subscription)
