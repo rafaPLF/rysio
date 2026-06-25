@@ -1,0 +1,787 @@
+<!DOCTYPE html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Rysio | Discord Bot</title>
+    <meta
+      name="description"
+      content="Rysio ist ein Discord Bot mit Moderation, Tickets, Verification, Notifications und Web Panel."
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --bg-dark: #2d333b;
+        --bg-card: #343b44;
+        --bg-soft: #4d79ff;
+        --bg-soft-2: #6aa8ff;
+        --text: #ffffff;
+        --muted: #d8e6ff;
+        --muted-dark: #c5cad3;
+        --line: rgba(255, 255, 255, 0.08);
+        --white: #ffffff;
+        --pill: #f0c84d;
+        --shadow: 0 20px 50px rgba(0, 0, 0, 0.16);
+        --max: 1120px;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: "Space Grotesk", sans-serif;
+        color: var(--text);
+        background: var(--bg-dark);
+      }
+
+      body.notice-open {
+        overflow: hidden;
+      }
+
+      a {
+        color: inherit;
+        text-decoration: none;
+      }
+
+      .notice-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 80;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+        background: rgba(8, 12, 20, 0.72);
+        backdrop-filter: blur(10px);
+      }
+
+      .notice-overlay.hidden {
+        display: none;
+      }
+
+      .notice-modal {
+        width: min(560px, 100%);
+        padding: 28px;
+        border-radius: 28px;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        background:
+          linear-gradient(180deg, rgba(52, 59, 68, 0.98), rgba(45, 51, 59, 0.98));
+        box-shadow: 0 28px 80px rgba(0, 0, 0, 0.34);
+      }
+
+      .notice-kicker {
+        display: inline-flex;
+        align-items: center;
+        padding: 8px 12px;
+        border-radius: 999px;
+        background: rgba(143, 216, 255, 0.12);
+        border: 1px solid rgba(143, 216, 255, 0.22);
+        color: #dff5ff;
+        font-size: 0.84rem;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+
+      .notice-modal h2 {
+        margin: 16px 0 12px;
+        font-size: clamp(2rem, 4vw, 2.8rem);
+        line-height: 0.98;
+        letter-spacing: -0.05em;
+      }
+
+      .notice-copy {
+        margin: 0;
+        color: var(--muted);
+        line-height: 1.7;
+      }
+
+      .notice-points {
+        margin: 18px 0 0;
+        padding-left: 18px;
+        color: var(--muted-dark);
+        line-height: 1.75;
+      }
+
+      .notice-actions {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+        margin-top: 22px;
+      }
+
+      .notice-button,
+      .notice-secondary {
+        min-height: 52px;
+        padding: 0 22px;
+        border-radius: 999px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 700;
+        border: 1px solid transparent;
+        transition: transform 0.18s ease, border-color 0.18s ease, background 0.18s ease;
+      }
+
+      .notice-button:hover,
+      .notice-secondary:hover {
+        transform: translateY(-1px);
+      }
+
+      .notice-button {
+        background: #ffffff;
+        color: #1b2030;
+      }
+
+      .notice-secondary {
+        background: rgba(255, 255, 255, 0.06);
+        border-color: rgba(255, 255, 255, 0.14);
+        color: var(--text);
+      }
+
+      .container {
+        width: min(var(--max), calc(100% - 32px));
+        margin: 0 auto;
+      }
+
+      .topbar {
+        background: #3a414a;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      }
+
+      .topbar-inner {
+        min-height: 72px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 18px;
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-weight: 700;
+      }
+
+      .brand-icon {
+        width: 34px;
+        height: 34px;
+        border-radius: 10px;
+        object-fit: cover;
+        display: block;
+      }
+
+      .nav {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+
+      .nav a {
+        color: #eef2f7;
+        font-size: 0.95rem;
+        padding: 8px 10px;
+        border-radius: 999px;
+      }
+
+      .nav a:hover {
+        background: rgba(255, 255, 255, 0.07);
+      }
+
+      .nav .premium {
+        background: var(--pill);
+        color: #433100;
+        font-weight: 700;
+      }
+
+      .login {
+        padding: 10px 18px;
+        border-radius: 999px;
+        border: 1px solid rgba(255, 255, 255, 0.22);
+        color: #f5f8fb;
+        font-weight: 500;
+      }
+
+      .hero {
+        position: relative;
+        overflow: hidden;
+        background:
+          radial-gradient(circle at 82% 18%, rgba(255, 255, 255, 0.12), transparent 18%),
+          radial-gradient(circle at 16% 28%, rgba(122, 220, 255, 0.15), transparent 16%),
+          linear-gradient(135deg, var(--bg-soft), var(--bg-soft-2));
+      }
+
+      .hero::before,
+      .hero::after {
+        content: "";
+        position: absolute;
+        border: 4px solid rgba(255, 255, 255, 0.12);
+        pointer-events: none;
+      }
+
+      .hero::before {
+        width: 130px;
+        height: 130px;
+        left: 6%;
+        top: 16%;
+        border-radius: 28px;
+        transform: rotate(45deg);
+      }
+
+      .hero::after {
+        width: 160px;
+        height: 160px;
+        right: 8%;
+        top: 14%;
+        border-radius: 50%;
+      }
+
+      .hero-shape {
+        position: absolute;
+        pointer-events: none;
+        opacity: 0.28;
+        z-index: 0;
+      }
+
+      .hero-shape.circle {
+        width: 72px;
+        height: 72px;
+        border: 4px solid rgba(255, 255, 255, 0.18);
+        border-radius: 50%;
+      }
+
+      .hero-shape.square {
+        width: 34px;
+        height: 34px;
+        border: 4px solid rgba(255, 255, 255, 0.16);
+        border-radius: 8px;
+        transform: rotate(45deg);
+      }
+
+      .hero-shape.plus {
+        width: 34px;
+        height: 34px;
+      }
+
+      .hero-shape.plus::before,
+      .hero-shape.plus::after {
+        content: "";
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        background: rgba(255, 255, 255, 0.15);
+        transform: translate(-50%, -50%);
+        border-radius: 999px;
+      }
+
+      .hero-shape.plus::before {
+        width: 34px;
+        height: 4px;
+      }
+
+      .hero-shape.plus::after {
+        width: 4px;
+        height: 34px;
+      }
+
+      .hero-shape.line {
+        width: 90px;
+        height: 4px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.15);
+        transform: rotate(-32deg);
+      }
+
+      .hero-shape.dot-grid {
+        width: 90px;
+        height: 70px;
+        background-image: radial-gradient(rgba(255, 255, 255, 0.22) 1.6px, transparent 1.6px);
+        background-size: 14px 14px;
+      }
+
+      .hero-shape.ring {
+        width: 54px;
+        height: 54px;
+        border: 10px solid rgba(255, 255, 255, 0.12);
+        border-radius: 50%;
+      }
+
+      .hero-shape.controller {
+        width: 120px;
+        height: 56px;
+        border: 4px solid rgba(255, 255, 255, 0.15);
+        border-radius: 24px;
+      }
+
+      .hero-shape.controller::before,
+      .hero-shape.controller::after {
+        content: "";
+        position: absolute;
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.16);
+      }
+
+      .hero-shape.controller::before {
+        width: 10px;
+        height: 10px;
+        left: 28px;
+        top: 22px;
+        box-shadow:
+          -12px 0 0 rgba(255, 255, 255, 0.16),
+          12px 0 0 rgba(255, 255, 255, 0.16),
+          0 -12px 0 rgba(255, 255, 255, 0.16),
+          0 12px 0 rgba(255, 255, 255, 0.16);
+      }
+
+      .hero-shape.controller::after {
+        width: 10px;
+        height: 10px;
+        right: 26px;
+        top: 18px;
+        box-shadow:
+          -16px 8px 0 rgba(255, 255, 255, 0.16),
+          0 16px 0 rgba(255, 255, 255, 0.16);
+      }
+
+      .hero-inner {
+        min-height: 520px;
+        display: grid;
+        grid-template-columns: 1fr 0.9fr;
+        align-items: center;
+        gap: 32px;
+        padding: 54px 0 96px;
+        position: relative;
+        z-index: 1;
+      }
+
+      .hero-copy h1 {
+        margin: 0;
+        font-size: clamp(2.8rem, 5vw, 4.5rem);
+        line-height: 0.98;
+        letter-spacing: -0.05em;
+        max-width: 9ch;
+      }
+
+      .hero-copy p {
+        margin: 16px 0 26px;
+        max-width: 34rem;
+        color: var(--muted);
+        font-size: 1.05rem;
+      }
+
+      .hero-actions {
+        display: flex;
+        gap: 14px;
+        flex-wrap: wrap;
+      }
+
+      .button-main,
+      .button-ghost {
+        min-height: 56px;
+        padding: 0 24px;
+        border-radius: 999px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 700;
+        transition: transform 0.18s ease;
+      }
+
+      .button-main:hover,
+      .button-ghost:hover {
+        transform: translateY(-1px);
+      }
+
+      .button-main {
+        background: #ffffff;
+        color: #1b2030;
+      }
+
+      .button-ghost {
+        background: rgba(255, 255, 255, 0.08);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+      }
+
+      .hero-art {
+        display: flex;
+        justify-content: center;
+      }
+
+      .bot-orb {
+        width: min(360px, 100%);
+        aspect-ratio: 1 / 1;
+        border-radius: 34px;
+        background:
+          radial-gradient(circle at 35% 30%, rgba(255, 255, 255, 0.28), transparent 20%),
+          radial-gradient(circle at 70% 70%, rgba(255, 255, 255, 0.12), transparent 18%),
+          linear-gradient(160deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.05));
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        box-shadow: var(--shadow);
+        display: grid;
+        place-items: center;
+      }
+
+      .bot-core {
+        width: 76%;
+        max-width: 240px;
+        aspect-ratio: 1 / 1;
+        object-fit: contain;
+        display: block;
+        filter: drop-shadow(0 14px 28px rgba(0, 0, 0, 0.24));
+      }
+
+      .wave {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: -1px;
+        height: 92px;
+        background: var(--bg-dark);
+        border-top-left-radius: 55% 100%;
+        border-top-right-radius: 55% 100%;
+      }
+
+      .section {
+        padding: 34px 0 0;
+      }
+
+      .section h2 {
+        margin: 0 0 24px;
+        text-align: center;
+        font-size: clamp(2rem, 3vw, 3rem);
+        letter-spacing: -0.04em;
+      }
+
+      .cards {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 18px;
+      }
+
+      .card {
+        background: var(--bg-card);
+        border: 1px solid var(--line);
+        border-radius: 20px;
+        padding: 24px;
+        min-height: 230px;
+        transition:
+          transform 0.18s ease,
+          border-color 0.18s ease,
+          box-shadow 0.18s ease,
+          background 0.18s ease;
+      }
+
+      .card:hover {
+        transform: translateY(-6px);
+        border-color: rgba(143, 216, 255, 0.24);
+        background: #39424d;
+        box-shadow: 0 18px 38px rgba(0, 0, 0, 0.18);
+      }
+
+      .card-icon {
+        width: 46px;
+        height: 46px;
+        border-radius: 14px;
+        display: grid;
+        place-items: center;
+        margin-bottom: 18px;
+        font-weight: 700;
+        background: rgba(255, 255, 255, 0.08);
+        transition: background 0.18s ease, transform 0.18s ease;
+      }
+
+      .card:hover .card-icon {
+        background: rgba(143, 216, 255, 0.16);
+        transform: scale(1.04);
+      }
+
+      .card h3 {
+        margin: 0 0 10px;
+        font-size: 1.45rem;
+      }
+
+      .card p {
+        margin: 0 0 16px;
+        color: var(--muted-dark);
+        line-height: 1.65;
+      }
+
+      .card-link {
+        color: #8fd8ff;
+        font-weight: 700;
+        font-size: 0.96rem;
+        transition: color 0.18s ease;
+      }
+
+      .card:hover .card-link {
+        color: #c8efff;
+      }
+
+      .cta-box {
+        margin: 56px auto 48px;
+        padding: 44px 28px;
+        border-radius: 26px;
+        text-align: center;
+        background: linear-gradient(135deg, #4d79ff, #6ca9ff);
+      }
+
+      .cta-box h2 {
+        margin: 0 0 12px;
+        font-size: clamp(2rem, 3vw, 3.1rem);
+      }
+
+      .cta-box p {
+        margin: 0 auto 26px;
+        max-width: 36rem;
+        color: var(--muted);
+      }
+
+      .cta-actions {
+        display: flex;
+        justify-content: center;
+        gap: 14px;
+        flex-wrap: wrap;
+      }
+
+      .footer {
+        padding: 20px 0 38px;
+        color: var(--muted-dark);
+      }
+
+      .footer-inner {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        flex-wrap: wrap;
+      }
+
+      .footer-links {
+        display: flex;
+        gap: 14px;
+        flex-wrap: wrap;
+      }
+
+      @media (max-width: 900px) {
+        .hero-inner,
+        .cards {
+          grid-template-columns: 1fr;
+        }
+
+        .hero-inner {
+          padding-bottom: 120px;
+        }
+
+        .hero-copy {
+          text-align: center;
+        }
+
+        .hero-copy h1,
+        .hero-copy p {
+          max-width: none;
+        }
+
+        .hero-actions {
+          justify-content: center;
+        }
+      }
+
+      @media (max-width: 720px) {
+        .topbar-inner {
+          flex-direction: column;
+          justify-content: center;
+          padding: 14px 0;
+        }
+
+        .nav {
+          justify-content: center;
+        }
+
+        .card {
+          min-height: auto;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="notice-overlay" id="siteNoticeOverlay">
+      <div class="notice-modal">
+        <span class="notice-kicker">Hinweis</span>
+        <h2>Rysio ist gerade noch im Aufbau.</h2>
+        <p class="notice-copy">
+          Website, Panel und Bot sind aktuell nur fuer Testzwecke online. Einzelne Funktionen koennen sich
+          kurzfristig aendern, unvollstaendig sein oder noch Fehler enthalten.
+        </p>
+        <ul class="notice-points">
+          <li>Gerade ist noch keine finale Live-Version.</li>
+          <li>Design, Features und Texte werden weiter ueberarbeitet.</li>
+          <li>Feedback ist willkommen, aber noch nicht alles ist fuer echte Nutzung gedacht.</li>
+        </ul>
+        <div class="notice-actions">
+          <button class="notice-button" id="siteNoticeConfirm" type="button">Verstanden</button>
+          <button class="notice-secondary" id="siteNoticeClose" type="button">Trotzdem fortfahren</button>
+        </div>
+      </div>
+    </div>
+    <header class="topbar">
+      <div class="container topbar-inner">
+        <a class="brand" href="index.html">
+          <img class="brand-icon" src="rysioohnebg.png" alt="Rysio Logo" />
+          <span>Rysio</span>
+        </a>
+
+        <nav class="nav">
+          <a href="https://discord.com/oauth2/authorize?client_id=1517954583039709346&permissions=8&integration_type=0&scope=bot%20applications.commands" target="_blank" rel="noopener noreferrer">Invite</a>
+          <a href="#">Discord</a>
+          <a href="#">Status</a>
+          <a href="#features">Features</a>
+          <a class="premium" href="#">Premium</a>
+        </nav>
+
+        <a class="login" href="https://rafaplf-testserver.de">Login</a>
+      </div>
+    </header>
+
+    <section class="hero">
+      <span class="hero-shape plus" style="left: 6%; top: 58%;"></span>
+      <span class="hero-shape square" style="left: 30%; top: 16%;"></span>
+      <span class="hero-shape circle" style="left: 48%; top: 12%;"></span>
+      <span class="hero-shape ring" style="left: 10%; top: 22%;"></span>
+      <span class="hero-shape line" style="left: 14%; top: 74%;"></span>
+      <span class="hero-shape line" style="left: 19%; top: 78%;"></span>
+      <span class="hero-shape dot-grid" style="left: 33%; top: 70%;"></span>
+      <span class="hero-shape dot-grid" style="left: 52%; top: 60%; width: 68px; height: 54px;"></span>
+      <span class="hero-shape dot-grid" style="right: 19%; top: 12%;"></span>
+      <span class="hero-shape square" style="right: 29%; top: 66%;"></span>
+      <span class="hero-shape square" style="right: 10%; top: 26%; transform: rotate(18deg); width: 24px; height: 24px;"></span>
+      <span class="hero-shape circle" style="right: 4%; top: 54%; width: 110px; height: 110px;"></span>
+      <span class="hero-shape circle" style="right: 24%; top: 72%; width: 60px; height: 60px;"></span>
+      <span class="hero-shape plus" style="right: 14%; top: 36%; transform: scale(0.75);"></span>
+      <span class="hero-shape plus" style="left: 43%; top: 82%; transform: scale(0.6);"></span>
+      <span class="hero-shape controller" style="right: 16%; top: 36%; transform: rotate(-10deg); opacity: 0.18;"></span>
+      <span class="hero-shape ring" style="right: 34%; top: 18%; width: 40px; height: 40px; border-width: 8px;"></span>
+      <span class="hero-shape line" style="right: 34%; top: 80%; width: 72px;"></span>
+      <span class="hero-shape line" style="right: 30%; top: 84%; width: 54px;"></span>
+
+      <div class="container hero-inner">
+        <div class="hero-copy">
+          <h1>Supercharge your Discord with Rysio.</h1>
+          <p>Moderation, Tickets, Verification, Notifications und ein eigenes Web Panel.</p>
+
+          <div class="hero-actions">
+            <a class="button-main" href="https://discord.com/oauth2/authorize?client_id=1517954583039709346&permissions=8&integration_type=0&scope=bot%20applications.commands" target="_blank" rel="noopener noreferrer">Add to Discord</a>
+            <a class="button-ghost" href="https://rafaplf-testserver.de">Open Panel</a>
+          </div>
+        </div>
+
+        <div class="hero-art">
+          <div class="bot-orb">
+            <img class="bot-core" src="rysioohnebg.png" alt="Rysio Bot" />
+          </div>
+        </div>
+      </div>
+
+      <div class="wave"></div>
+    </section>
+
+    <main class="container">
+      <section class="section" id="features">
+        <h2>Why Rysio?</h2>
+
+        <div class="cards">
+          <article class="card">
+            <div class="card-icon">RR</div>
+            <h3>Reaction Roles</h3>
+            <p>Rollen sauber vergeben, ohne dass alles ueber chaotische Commands laufen muss.</p>
+            <a class="card-link" href="#">Learn more</a>
+          </article>
+
+          <article class="card">
+            <div class="card-icon">MD</div>
+            <h3>Moderation</h3>
+            <p>Moderations-Tools mit klaren Rollen, Rechten und spaeteren Panel-Setups.</p>
+            <a class="card-link" href="#">Learn more</a>
+          </article>
+
+          <article class="card">
+            <div class="card-icon">AM</div>
+            <h3>Automod</h3>
+            <p>Spam, Sicherheits- und Schutzsysteme fuer Communities, die Ruhe brauchen.</p>
+            <a class="card-link" href="#">Learn more</a>
+          </article>
+
+          <article class="card">
+            <div class="card-icon">TK</div>
+            <h3>Tickets</h3>
+            <p>Panels, Claims, Notizen und Support-Struktur fuer groeßere Server.</p>
+            <a class="card-link" href="#">Learn more</a>
+          </article>
+
+          <article class="card">
+            <div class="card-icon">VF</div>
+            <h3>Verification</h3>
+            <p>Captcha und Verifizierungs-Abläufe, damit nicht jeder Join direkt Stress bringt.</p>
+            <a class="card-link" href="#">Learn more</a>
+          </article>
+
+          <article class="card">
+            <div class="card-icon">NT</div>
+            <h3>Notifications</h3>
+            <p>Twitch-, Kick- und YouTube-Alerts direkt im richtigen Channel.</p>
+            <a class="card-link" href="#">Learn more</a>
+          </article>
+        </div>
+      </section>
+
+      <section class="cta-box">
+        <h2>Ready to upgrade your server?</h2>
+        <p>Rysio ist auf Wachstum ausgelegt. Kostenlos stark nutzbar, spaeter mit Premium.</p>
+
+        <div class="cta-actions">
+          <a class="button-main" href="https://discord.com/oauth2/authorize?client_id=1517954583039709346&permissions=8&integration_type=0&scope=bot%20applications.commands" target="_blank" rel="noopener noreferrer">Add to Discord</a>
+        </div>
+      </section>
+
+      <footer class="footer">
+        <div class="footer-inner">
+          <strong>Rysio</strong>
+          <div class="footer-links">
+            <a href="#">Terms</a>
+            <a href="#">Privacy</a>
+            <a href="#">Status</a>
+          </div>
+        </div>
+      </footer>
+    </main>
+    <script>
+      const noticeStorageKey = "rysio-prelive-notice-v1";
+      const noticeOverlay = document.getElementById("siteNoticeOverlay");
+      const noticeConfirm = document.getElementById("siteNoticeConfirm");
+      const noticeClose = document.getElementById("siteNoticeClose");
+
+      function hideSiteNotice() {
+        noticeOverlay.classList.add("hidden");
+        document.body.classList.remove("notice-open");
+        localStorage.setItem(noticeStorageKey, "dismissed");
+      }
+
+      if (localStorage.getItem(noticeStorageKey) === "dismissed") {
+        noticeOverlay.classList.add("hidden");
+      } else {
+        document.body.classList.add("notice-open");
+      }
+
+      noticeConfirm.addEventListener("click", hideSiteNotice);
+      noticeClose.addEventListener("click", hideSiteNotice);
+    </script>
+  </body>
+</html>

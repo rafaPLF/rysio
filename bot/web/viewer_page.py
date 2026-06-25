@@ -45,6 +45,40 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
         radial-gradient(circle at top right, rgba(91, 136, 255, 0.12), transparent 20%),
         linear-gradient(180deg, #2d333b 0%, #313841 100%);
     }}
+    body.notice-open {{ overflow: hidden; }}
+
+    .notice-overlay {{
+      position: fixed; inset: 0; z-index: 120;
+      display: flex; align-items: center; justify-content: center; padding: 20px;
+      background: rgba(8, 12, 20, 0.72); backdrop-filter: blur(10px);
+    }}
+    .notice-overlay.hidden {{ display: none; }}
+    .notice-modal {{
+      width: min(560px, 100%);
+      padding: 28px;
+      border-radius: 28px;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      background: linear-gradient(180deg, rgba(52, 59, 68, 0.98), rgba(45, 51, 59, 0.98));
+      box-shadow: 0 28px 80px rgba(0, 0, 0, 0.34);
+    }}
+    .notice-kicker {{
+      display: inline-flex; align-items: center; padding: 8px 12px; border-radius: 999px;
+      background: rgba(143, 216, 255, 0.12); border: 1px solid rgba(143, 216, 255, 0.22);
+      color: #dff5ff; font-size: 0.84rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
+    }}
+    .notice-modal h2 {{
+      margin: 16px 0 12px; font-size: clamp(2rem, 4vw, 2.8rem); line-height: 0.98; letter-spacing: -0.05em;
+    }}
+    .notice-copy {{ margin: 0; color: var(--muted); line-height: 1.7; }}
+    .notice-points {{ margin: 18px 0 0; padding-left: 18px; color: var(--muted); line-height: 1.75; }}
+    .notice-actions {{ display: flex; gap: 12px; flex-wrap: wrap; margin-top: 22px; }}
+    .notice-button, .notice-secondary {{
+      width: auto; min-height: 52px; padding: 0 22px; border-radius: 999px;
+      display: inline-flex; align-items: center; justify-content: center; font-weight: 700;
+      border: 1px solid transparent;
+    }}
+    .notice-button {{ background: #ffffff; color: #1b2030; }}
+    .notice-secondary {{ background: rgba(255, 255, 255, 0.06); border-color: rgba(255, 255, 255, 0.14); color: var(--text); }}
 
     .page {{ width: min(1460px, calc(100% - 28px)); margin: 18px auto 42px; }}
     .topbar {{
@@ -209,6 +243,22 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
   </style>
 </head>
 <body>
+  <div class="notice-overlay" id="siteNoticeOverlay">
+    <div class="notice-modal">
+      <span class="notice-kicker">Hinweis</span>
+      <h2>Rysio ist noch in Vorbereitung.</h2>
+      <p class="notice-copy">Dieses Panel und der Bot sind aktuell nur testweise online. Einzelne Bereiche koennen noch unvollstaendig sein oder sich kurzfristig aendern.</p>
+      <ul class="notice-points">
+        <li>Gerade ist das noch keine finale Kunden-Version.</li>
+        <li>Features, Rollenlogik und Panel-Ablaufe werden noch erweitert.</li>
+        <li>Bitte aktuell nur als Vorschau- und Testsystem verstehen.</li>
+      </ul>
+      <div class="notice-actions">
+        <button class="notice-button" id="siteNoticeConfirm" type="button">Verstanden</button>
+        <button class="notice-secondary" id="siteNoticeClose" type="button">Trotzdem fortfahren</button>
+      </div>
+    </div>
+  </div>
   <main class="page">
     <header class="topbar">
       <div class="brand">
@@ -528,6 +578,7 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
   <script>
     const DEFAULT_API_BASE_URL = `{api_base_url_js}`;
     const STORAGE_KEY = "rysio-control-panel";
+    const SITE_NOTICE_KEY = "rysio-prelive-notice-v1";
 
     const apiBaseUrlInput = document.getElementById("apiBaseUrl");
     const guildSelect = document.getElementById("guildSelect");
@@ -563,6 +614,9 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
     const headerGuildMeta = document.getElementById("headerGuildMeta");
     const changeGuildButton = document.getElementById("changeGuildButton");
     const headerLogoutButton = document.getElementById("headerLogoutButton");
+    const siteNoticeOverlay = document.getElementById("siteNoticeOverlay");
+    const siteNoticeConfirm = document.getElementById("siteNoticeConfirm");
+    const siteNoticeClose = document.getElementById("siteNoticeClose");
     const ticketChannelSelect = document.getElementById("ticketChannelSelect");
     const ticketCategorySelect = document.getElementById("ticketCategorySelect");
     const ticketSupportRoleSelect = document.getElementById("ticketSupportRoleSelect");
@@ -1615,6 +1669,21 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
       saveState();
       updateGateState();
     }});
+
+    function hideSiteNotice() {{
+      siteNoticeOverlay.classList.add("hidden");
+      document.body.classList.remove("notice-open");
+      localStorage.setItem(SITE_NOTICE_KEY, "dismissed");
+    }}
+
+    if (localStorage.getItem(SITE_NOTICE_KEY) === "dismissed") {{
+      siteNoticeOverlay.classList.add("hidden");
+    }} else {{
+      document.body.classList.add("notice-open");
+    }}
+
+    siteNoticeConfirm.addEventListener("click", hideSiteNotice);
+    siteNoticeClose.addEventListener("click", hideSiteNotice);
 
     loadSavedState();
     setActivePanelView(currentPanelView);
