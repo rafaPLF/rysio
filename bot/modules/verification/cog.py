@@ -5,7 +5,7 @@ from discord import app_commands
 from discord.ext import commands
 
 from bot.database.repositories.verification_repo import VerificationRepository
-from bot.modules.verification.views import VerificationView
+from bot.modules.verification.views import VerificationView, complete_verification
 from bot.utils.access import can_manage_guild
 
 
@@ -112,6 +112,44 @@ class VerificationCog(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
         self.bot.tree.add_command(VerificationGroup())
+
+    @commands.Cog.listener()
+    async def on_raw_reaction_add(self, payload: discord.RawReactionActionEvent) -> None:
+        if payload.guild_id is None or self.bot.user is None or payload.user_id == self.bot.user.id:
+            return
+
+        async with self.bot.database.session() as session:
+            repo = VerificationRepository(session)
+            settings = await repo.get_settings(payload.guild_id)
+
+        if settings is None or settings.captcha_type != "reaction" or settings.panel_message_id != payload.message_id:
+            return
+
+        expected_emoji = (settings.reaction_emoji or "").strip()
+        if not expected_emoji:
+            return
+
+        raw_emoji = str(payload.emoji)
+        emoji_name = payload.emoji.name or ""
+        emoji_id = str(payload.emoji.id) if payload.emoji.id else ""
+        if expected_emoji not in {raw_emoji, emoji_name, emoji_id}:
+            return
+
+        guild = self.bot.get_guild(payload.guild_id)
+        if guild is None:
+            return
+
+        member = payload.member or guild.get_member(payload.user_id)
+        if member is None:
+            try:
+                member = await guild.fetch_member(payload.user_id)
+            except discord.HTTPException:
+                return
+
+        try:
+            await complete_verification(self.bot, guild, member, settings=settings)
+        except discord.HTTPException:
+            return
 
 
 async def setup(bot: commands.Bot) -> None:

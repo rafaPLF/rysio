@@ -45,6 +45,12 @@ class DatabaseSessionManager:
         columns = {column["name"] for column in inspector.get_columns("verification_settings")}
         if "panel_message_id" not in columns:
             connection.execute(text("ALTER TABLE verification_settings ADD COLUMN panel_message_id BIGINT"))
+        if "panel_title" not in columns:
+            connection.execute(text("ALTER TABLE verification_settings ADD COLUMN panel_title VARCHAR(255)"))
+        if "panel_description" not in columns:
+            connection.execute(text("ALTER TABLE verification_settings ADD COLUMN panel_description TEXT"))
+        if "reaction_emoji" not in columns:
+            connection.execute(text("ALTER TABLE verification_settings ADD COLUMN reaction_emoji VARCHAR(128)"))
 
         if "guild_settings" not in tables:
             return

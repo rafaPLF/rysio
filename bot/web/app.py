@@ -176,6 +176,9 @@ def _serialize_verification_settings(settings, guild: discord.Guild, *, enabled:
         "verified_role_name": role.name if role else None,
         "panel_message_id": str(settings.panel_message_id) if settings and settings.panel_message_id else None,
         "captcha_type": settings.captcha_type if settings else "button",
+        "panel_title": settings.panel_title if settings else None,
+        "panel_description": settings.panel_description if settings else None,
+        "reaction_emoji": settings.reaction_emoji if settings else None,
     }
 
 
@@ -189,18 +192,68 @@ def _build_ticket_panel_embed(bot: discord.Client, *, language: str, title: str,
     return embed
 
 
-def _build_verification_panel_embed(bot: discord.Client, *, language: str) -> discord.Embed:
+def _build_verification_reaction_hint(language: str, reaction_emoji: str) -> str:
+    if language.lower().startswith("de"):
+        return f"Reagiere mit {reaction_emoji}, um dich zu verifizieren."
+    return f"React with {reaction_emoji} to verify yourself."
+
+
+def _build_verification_panel_embed(
+    bot: discord.Client,
+    *,
+    language: str,
+    panel_title: str | None = None,
+    panel_description: str | None = None,
+    captcha_type: str = "button",
+    reaction_emoji: str | None = None,
+) -> discord.Embed:
+    title = (panel_title or "").strip() or bot.localization.translate("verification.panel_title", language=language)  # type: ignore[attr-defined]
+    description = (panel_description or "").strip() or bot.localization.translate("verification.panel_description", language=language)  # type: ignore[attr-defined]
+    field_value = bot.localization.translate("verification.panel_field_value", language=language)  # type: ignore[attr-defined]
+    if captcha_type == "reaction":
+        field_value = _build_verification_reaction_hint(language, reaction_emoji or "✅")
+
     embed = discord.Embed(
-        title=bot.localization.translate("verification.panel_title", language=language),  # type: ignore[attr-defined]
-        description=bot.localization.translate("verification.panel_description", language=language),  # type: ignore[attr-defined]
+        title=title,
+        description=description,
         color=discord.Color.green(),
     )
     embed.add_field(
         name=bot.localization.translate("verification.panel_field_name", language=language),  # type: ignore[attr-defined]
-        value=bot.localization.translate("verification.panel_field_value", language=language),  # type: ignore[attr-defined]
+        value=field_value,
         inline=False,
     )
     return embed
+
+
+async def _delete_verification_panel_message(guild: discord.Guild, verification_settings) -> None:
+    if verification_settings is None or verification_settings.panel_message_id is None:
+        return
+
+    channel = guild.get_channel(verification_settings.verification_channel_id) if verification_settings.verification_channel_id else None
+    if not isinstance(channel, discord.TextChannel):
+        return
+
+    try:
+        message = await channel.fetch_message(verification_settings.panel_message_id)
+        await message.delete()
+    except (discord.NotFound, discord.HTTPException):
+        return
+
+
+async def _send_verification_panel_message(
+    channel: discord.TextChannel,
+    *,
+    embed: discord.Embed,
+    captcha_type: str,
+    reaction_emoji: str | None,
+) -> discord.Message:
+    if captcha_type == "reaction":
+        message = await channel.send(embed=embed)
+        await message.add_reaction(reaction_emoji or "✅")
+        return message
+
+    return await channel.send(embed=embed, view=VerificationView())
 
 
 async def _get_authorized_guild(request: web.Request) -> discord.Guild | None:
@@ -705,11 +758,18 @@ async def save_verification_settings(request: web.Request) -> web.Response:
     verification_channel_id_raw = str(payload.get("verification_channel_id", "")).strip()
     verified_role_id_raw = str(payload.get("verified_role_id", "")).strip()
     captcha_type = str(payload.get("captcha_type", "button")).strip().lower() or "button"
+    panel_title = str(payload.get("panel_title", "")).strip() or None
+    panel_description = str(payload.get("panel_description", "")).strip() or None
+    reaction_emoji = str(payload.get("reaction_emoji", "")).strip() or None
 
     if not verification_channel_id_raw or not verified_role_id_raw:
         return web.json_response({"error": "missing_required_fields"}, status=400)
-    if captcha_type != "button":
+    if captcha_type not in {"button", "reaction"}:
         return web.json_response({"error": "unsupported_captcha_type"}, status=400)
+    if captcha_type == "reaction" and not reaction_emoji:
+        return web.json_response({"error": "missing_reaction_emoji"}, status=400)
+    if captcha_type == "button":
+        reaction_emoji = None
 
     try:
         verification_channel_id = int(verification_channel_id_raw)
@@ -740,6 +800,8 @@ async def save_verification_settings(request: web.Request) -> web.Response:
     permissions = channel.permissions_for(bot_member)
     if not (permissions.send_messages and permissions.embed_links):
         return web.json_response({"error": "missing_channel_permissions"}, status=400)
+    if captcha_type == "reaction" and not permissions.add_reactions:
+        return web.json_response({"error": "missing_reaction_permissions"}, status=400)
 
     database: DatabaseSessionManager = request.app["database"]
     async with database.session() as session:
@@ -749,34 +811,54 @@ async def save_verification_settings(request: web.Request) -> web.Response:
         settings = await guild_repo.ensure_settings(guild.id)
         verification_settings = await verification_repo.get_settings(guild.id)
         language = await bot.guild_config.get_language(bot.database, guild.id)  # type: ignore[attr-defined]
-        embed = _build_verification_panel_embed(bot, language=language)
+        embed = _build_verification_panel_embed(
+            bot,
+            language=language,
+            panel_title=panel_title,
+            panel_description=panel_description,
+            captcha_type=captcha_type,
+            reaction_emoji=reaction_emoji,
+        )
 
         final_message_id = verification_settings.panel_message_id if verification_settings else None
-        if verification_settings is None or verification_settings.panel_message_id is None:
-            message = await channel.send(embed=embed, view=VerificationView())
-            bot.add_view(VerificationView(), message_id=message.id)
-            final_message_id = message.id
-        elif verification_settings.verification_channel_id != channel.id:
-            message = await channel.send(embed=embed, view=VerificationView())
-            bot.add_view(VerificationView(), message_id=message.id)
-            final_message_id = message.id
+        recreate_message = (
+            verification_settings is None
+            or verification_settings.panel_message_id is None
+            or verification_settings.verification_channel_id != channel.id
+            or verification_settings.captcha_type != captcha_type
+            or (captcha_type == "reaction" and verification_settings.reaction_emoji != reaction_emoji)
+        )
 
-            old_channel = guild.get_channel(verification_settings.verification_channel_id) if verification_settings.verification_channel_id else None
-            if isinstance(old_channel, discord.TextChannel):
-                try:
-                    old_message = await old_channel.fetch_message(verification_settings.panel_message_id)
-                    await old_message.delete()
-                except (discord.NotFound, discord.HTTPException):
-                    pass
+        if recreate_message:
+            message = await _send_verification_panel_message(
+                channel,
+                embed=embed,
+                captcha_type=captcha_type,
+                reaction_emoji=reaction_emoji,
+            )
+            if captcha_type == "button":
+                bot.add_view(VerificationView(), message_id=message.id)
+            final_message_id = message.id
+            await _delete_verification_panel_message(guild, verification_settings)
         else:
             try:
                 existing_message = await channel.fetch_message(verification_settings.panel_message_id)
-                await existing_message.edit(embed=embed, view=VerificationView())
-                bot.add_view(VerificationView(), message_id=existing_message.id)
+                if captcha_type == "button":
+                    await existing_message.edit(embed=embed, view=VerificationView())
+                    bot.add_view(VerificationView(), message_id=existing_message.id)
+                else:
+                    await existing_message.edit(embed=embed, view=None)
+                    await existing_message.add_reaction(reaction_emoji or "✅")
                 final_message_id = existing_message.id
             except discord.NotFound:
-                message = await channel.send(embed=embed, view=VerificationView())
-                bot.add_view(VerificationView(), message_id=message.id)
+                message = await _send_verification_panel_message(
+                    channel,
+                    embed=embed,
+                    captcha_type=captcha_type,
+                    reaction_emoji=reaction_emoji,
+                )
+                if captcha_type == "button":
+                    bot.add_view(VerificationView(), message_id=message.id)
                 final_message_id = message.id
             except discord.HTTPException:
                 return web.json_response({"error": "verification_panel_update_failed"}, status=500)
@@ -787,6 +869,9 @@ async def save_verification_settings(request: web.Request) -> web.Response:
             verified_role_id=verified_role.id,
             panel_message_id=final_message_id,
             captcha_type=captcha_type,
+            panel_title=panel_title,
+            panel_description=panel_description,
+            reaction_emoji=reaction_emoji,
         )
         settings.verification_enabled = True
 
@@ -794,6 +879,32 @@ async def save_verification_settings(request: web.Request) -> web.Response:
         {
             "saved": True,
             "verification": _serialize_verification_settings(verification_settings, guild, enabled=True),
+        }
+    )
+
+
+async def delete_verification_settings(request: web.Request) -> web.Response:
+    guild = await _get_authorized_guild(request)
+    if guild is None:
+        return _forbidden("guild_access_denied")
+    if not await _session_can_manage_guild(request, guild):
+        return _forbidden("guild_manage_required")
+
+    database: DatabaseSessionManager = request.app["database"]
+    async with database.session() as session:
+        guild_repo = GuildRepository(session)
+        verification_repo = VerificationRepository(session)
+        settings = await guild_repo.ensure_settings(guild.id)
+        verification_settings = await verification_repo.get_settings(guild.id)
+        await _delete_verification_panel_message(guild, verification_settings)
+        await verification_repo.delete_settings(guild.id)
+        settings.verification_enabled = False
+
+    return web.json_response(
+        {
+            "deleted": True,
+            "guild_id": str(guild.id),
+            "verification": _serialize_verification_settings(None, guild, enabled=False),
         }
     )
 
@@ -1186,6 +1297,7 @@ def create_web_app(database: DatabaseSessionManager, api_token: str, allowed_ori
     app.router.add_get("/api/guilds/{guild_id:\\d+}/overview", get_guild_overview)
     app.router.add_get("/api/guilds/{guild_id:\\d+}/verification", get_guild_verification)
     app.router.add_put("/api/guilds/{guild_id:\\d+}/verification", save_verification_settings)
+    app.router.add_delete("/api/guilds/{guild_id:\\d+}/verification", delete_verification_settings)
     app.router.add_post("/api/guilds/{guild_id:\\d+}/notifications", create_notification_subscription)
     app.router.add_patch("/api/guilds/{guild_id:\\d+}/notifications/{subscription_id:\\d+}", update_notification_subscription)
     app.router.add_delete("/api/guilds/{guild_id:\\d+}/notifications/{subscription_id:\\d+}", delete_notification_subscription)

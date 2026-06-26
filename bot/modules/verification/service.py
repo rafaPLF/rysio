@@ -20,5 +20,5 @@ class VerificationService:
             settings_list = result.scalars().all()
 
         for settings in settings_list:
-            if settings.panel_message_id:
+            if settings.panel_message_id and settings.captcha_type == "button":
                 bot.add_view(VerificationView(), message_id=settings.panel_message_id)

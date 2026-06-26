@@ -19,6 +19,9 @@ class VerificationRepository:
         verified_role_id: int | None,
         panel_message_id: int | None,
         captcha_type: str = "button",
+        panel_title: str | None = None,
+        panel_description: str | None = None,
+        reaction_emoji: str | None = None,
     ) -> VerificationSettings:
         settings = await self.get_settings(guild_id)
         if settings is None:
@@ -28,6 +31,9 @@ class VerificationRepository:
                 verified_role_id=verified_role_id,
                 panel_message_id=panel_message_id,
                 captcha_type=captcha_type,
+                panel_title=panel_title,
+                panel_description=panel_description,
+                reaction_emoji=reaction_emoji,
             )
             self.session.add(settings)
         else:
@@ -35,6 +41,17 @@ class VerificationRepository:
             settings.verified_role_id = verified_role_id
             settings.panel_message_id = panel_message_id
             settings.captcha_type = captcha_type
+            settings.panel_title = panel_title
+            settings.panel_description = panel_description
+            settings.reaction_emoji = reaction_emoji
 
+        await self.session.flush()
+        return settings
+
+    async def delete_settings(self, guild_id: int) -> VerificationSettings | None:
+        settings = await self.get_settings(guild_id)
+        if settings is None:
+            return None
+        await self.session.delete(settings)
         await self.session.flush()
         return settings

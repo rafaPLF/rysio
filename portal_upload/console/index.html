@@ -1,10 +1,4 @@
-from __future__ import annotations
-
-
-def render_logs_viewer_page(api_base_url: str = "") -> str:
-    api_base_url = api_base_url.replace("&", "&amp;").replace('"', "&quot;")
-    api_base_url_js = api_base_url.replace("\\", "\\\\").replace("`", "\\`")
-    return f"""<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="de">
 <head>
   <meta charset="utf-8">
@@ -14,7 +8,7 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
   <style>
-    :root {{
+    :root {
       color-scheme: dark;
       --bg: #2d333b;
       --panel: rgba(52, 59, 68, 0.9);
@@ -32,10 +26,10 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
       --border: rgba(255, 255, 255, 0.08);
       --shadow: 0 20px 50px rgba(0, 0, 0, 0.16);
       --radius: 22px;
-    }}
+    }
 
-    * {{ box-sizing: border-box; }}
-    body {{
+    * { box-sizing: border-box; }
+    body {
       margin: 0;
       min-height: 100vh;
       font-family: "Space Grotesk", sans-serif;
@@ -44,202 +38,201 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
         radial-gradient(circle at top left, rgba(122, 220, 255, 0.12), transparent 22%),
         radial-gradient(circle at top right, rgba(91, 136, 255, 0.12), transparent 20%),
         linear-gradient(180deg, #2d333b 0%, #313841 100%);
-    }}
-    body.notice-open {{ overflow: hidden; }}
+    }
+    body.notice-open { overflow: hidden; }
 
-    .notice-overlay {{
+    .notice-overlay {
       position: fixed; inset: 0; z-index: 120;
       display: flex; align-items: center; justify-content: center; padding: 20px;
       background: rgba(8, 12, 20, 0.72); backdrop-filter: blur(10px);
-    }}
-    .notice-overlay.hidden {{ display: none; }}
-    .notice-modal {{
+    }
+    .notice-overlay.hidden { display: none; }
+    .notice-modal {
       width: min(560px, 100%);
       padding: 28px;
       border-radius: 28px;
       border: 1px solid rgba(255, 255, 255, 0.12);
       background: linear-gradient(180deg, rgba(52, 59, 68, 0.98), rgba(45, 51, 59, 0.98));
       box-shadow: 0 28px 80px rgba(0, 0, 0, 0.34);
-    }}
-    .notice-kicker {{
+    }
+    .notice-kicker {
       display: inline-flex; align-items: center; padding: 8px 12px; border-radius: 999px;
       background: rgba(143, 216, 255, 0.12); border: 1px solid rgba(143, 216, 255, 0.22);
       color: #dff5ff; font-size: 0.84rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
-    }}
-    .notice-modal h2 {{
+    }
+    .notice-modal h2 {
       margin: 16px 0 12px; font-size: clamp(2rem, 4vw, 2.8rem); line-height: 0.98; letter-spacing: -0.05em;
-    }}
-    .notice-copy {{ margin: 0; color: var(--muted); line-height: 1.7; }}
-    .notice-points {{ margin: 18px 0 0; padding-left: 18px; color: var(--muted); line-height: 1.75; }}
-    .notice-actions {{ display: flex; gap: 12px; flex-wrap: wrap; margin-top: 22px; }}
-    .notice-button, .notice-secondary {{
+    }
+    .notice-copy { margin: 0; color: var(--muted); line-height: 1.7; }
+    .notice-points { margin: 18px 0 0; padding-left: 18px; color: var(--muted); line-height: 1.75; }
+    .notice-actions { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 22px; }
+    .notice-button, .notice-secondary {
       width: auto; min-height: 52px; padding: 0 22px; border-radius: 999px;
       display: inline-flex; align-items: center; justify-content: center; font-weight: 700;
       border: 1px solid transparent;
-    }}
-    .notice-button {{ background: #ffffff; color: #1b2030; }}
-    .notice-secondary {{ background: rgba(255, 255, 255, 0.06); border-color: rgba(255, 255, 255, 0.14); color: var(--text); }}
+    }
+    .notice-button { background: #ffffff; color: #1b2030; }
+    .notice-secondary { background: rgba(255, 255, 255, 0.06); border-color: rgba(255, 255, 255, 0.14); color: var(--text); }
 
-    .page {{ width: min(1460px, calc(100% - 28px)); margin: 18px auto 42px; }}
-    .topbar {{
+    .page { width: min(1460px, calc(100% - 28px)); margin: 18px auto 42px; }
+    .topbar {
       display: flex; justify-content: space-between; align-items: center; gap: 16px;
       padding: 14px 18px; margin-bottom: 18px; border-radius: 20px; border: 1px solid var(--border);
       background: rgba(58, 65, 74, 0.94); box-shadow: var(--shadow); backdrop-filter: blur(14px); flex-wrap: wrap;
-    }}
-    .brand {{ display: flex; flex-direction: column; gap: 4px; }}
-    .brand-mark {{ display: inline-flex; align-items: center; gap: 10px; font-size: 28px; font-weight: 700; letter-spacing: -0.03em; }}
-    .brand-sub {{ color: var(--muted); font-size: 13px; max-width: 840px; line-height: 1.5; }}
-    .top-actions {{ display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }}
-    .session-summary {{ display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }}
-    .summary-card {{
+    }
+    .brand { display: flex; flex-direction: column; gap: 4px; }
+    .brand-mark { display: inline-flex; align-items: center; gap: 10px; font-size: 28px; font-weight: 700; letter-spacing: -0.03em; }
+    .brand-sub { color: var(--muted); font-size: 13px; max-width: 840px; line-height: 1.5; }
+    .top-actions { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+    .session-summary { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+    .summary-card {
       display: inline-flex; align-items: center; gap: 10px; padding: 8px 12px; min-height: 54px;
       border-radius: 999px; border: 1px solid var(--border); background: rgba(47, 55, 66, 0.98);
       min-width: 220px;
-    }}
-    .summary-avatar {{
+    }
+    .summary-avatar {
       width: 36px; height: 36px; border-radius: 50%; object-fit: cover; display: none;
-      border: 1px solid rgba(255,255,255,0.12);
-      background: rgba(255,255,255,0.08);
-    }}
-    .summary-avatar.visible {{ display: block; }}
-    .summary-copy {{ display: flex; flex-direction: column; gap: 2px; line-height: 1.15; }}
-    .summary-title {{ font-size: 14px; font-weight: 700; color: var(--text); }}
-    .summary-sub {{ font-size: 12px; color: var(--muted); }}
-    .pill {{
+      border: 1px solid rgba(255,255,255,0.12); background: rgba(255,255,255,0.08);
+    }
+    .summary-avatar.visible { display: block; }
+    .summary-copy { display: flex; flex-direction: column; gap: 2px; line-height: 1.15; }
+    .summary-title { font-size: 14px; font-weight: 700; color: var(--text); }
+    .summary-sub { font-size: 12px; color: var(--muted); }
+    .pill {
       display: inline-flex; align-items: center; gap: 8px; padding: 10px 14px; border-radius: 999px;
       border: 1px solid var(--border); background: rgba(47, 55, 66, 0.98); color: var(--muted); font-size: 13px;
-    }}
-    .layout {{ display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: 18px; }}
-    .layout.gated {{ grid-template-columns: 1fr; }}
-    .sidebar, .content-shell {{
+    }
+    .layout { display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: 18px; }
+    .layout.gated { grid-template-columns: 1fr; }
+    .sidebar, .content-shell {
       border: 1px solid var(--border); border-radius: 24px; background: rgba(52, 59, 68, 0.92);
       box-shadow: var(--shadow); backdrop-filter: blur(14px);
-    }}
-    .sidebar {{ padding: 18px; display: grid; gap: 16px; align-content: start; }}
-    .content-shell {{ padding: 18px; display: grid; gap: 18px; }}
-    .workspace {{ display: grid; gap: 18px; }}
-    .hidden {{ display: none !important; }}
-    .block, .hero, .metric, .card, .entry {{
+    }
+    .sidebar { padding: 18px; display: grid; gap: 16px; align-content: start; }
+    .content-shell { padding: 18px; display: grid; gap: 18px; }
+    .workspace { display: grid; gap: 18px; }
+    .hidden { display: none !important; }
+    .block, .hero, .metric, .card, .entry {
       border: 1px solid var(--border); border-radius: var(--radius);
       background: linear-gradient(180deg, var(--panel-strong), var(--panel-soft)); padding: 16px;
       transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
-    }}
-    .metric:hover, .card:hover, .entry:hover, .panel-card:hover, .ticket-card:hover {{
+    }
+    .metric:hover, .card:hover, .entry:hover, .panel-card:hover, .ticket-card:hover {
       transform: translateY(-3px);
       border-color: rgba(143, 216, 255, 0.18);
       box-shadow: 0 18px 38px rgba(0, 0, 0, 0.18);
-    }}
-    .hero {{
+    }
+    .hero {
       padding: 20px;
       background: linear-gradient(135deg, rgba(77, 121, 255, 0.2), rgba(106, 168, 255, 0.2)), linear-gradient(180deg, var(--panel-strong), var(--panel-soft));
-    }}
-    .gate-card {{
+    }
+    .gate-card {
       max-width: 760px;
       margin: 0 auto;
       text-align: center;
       padding: 28px;
-    }}
-    .gate-card h1 {{ margin-bottom: 14px; }}
-    .gate-card p {{ max-width: 560px; margin: 0 auto; }}
-    .gate-actions {{ display: flex; justify-content: center; gap: 12px; flex-wrap: wrap; margin-top: 18px; }}
-    .gate-actions button {{ width: auto; min-width: 180px; }}
-    h1, h2, h3, p {{ margin: 0; }}
-    h1 {{ font-size: clamp(30px, 4vw, 44px); line-height: 0.98; margin-bottom: 10px; letter-spacing: -0.04em; }}
-    h2 {{ font-size: 18px; margin-bottom: 12px; }}
-    h3 {{ font-size: 15px; margin-bottom: 10px; }}
-    .muted, .hint, .meta, .empty, .error {{ color: var(--muted); }}
-    .empty {{ padding: 12px; border-radius: 14px; border: 1px dashed var(--border); background: rgba(47, 55, 66, 0.68); }}
-    .metrics, .ticket-grid, .log-grid {{ display: grid; gap: 14px; }}
-    .metrics {{ grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }}
-    .ticket-grid {{ grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }}
-    .log-grid {{ grid-template-columns: minmax(0, 1fr); }}
-    .metric-value {{ font-size: 30px; color: var(--accent); margin-top: 8px; }}
-    .status-row {{ display: flex; gap: 10px; flex-wrap: wrap; margin-top: 16px; }}
-    .status-chip {{
+    }
+    .gate-card h1 { margin-bottom: 14px; }
+    .gate-card p { max-width: 560px; margin: 0 auto; }
+    .gate-actions { display: flex; justify-content: center; gap: 12px; flex-wrap: wrap; margin-top: 18px; }
+    .gate-actions button { width: auto; min-width: 180px; }
+    h1, h2, h3, p { margin: 0; }
+    h1 { font-size: clamp(30px, 4vw, 44px); line-height: 0.98; margin-bottom: 10px; letter-spacing: -0.04em; }
+    h2 { font-size: 18px; margin-bottom: 12px; }
+    h3 { font-size: 15px; margin-bottom: 10px; }
+    .muted, .hint, .meta, .empty, .error { color: var(--muted); }
+    .empty { padding: 12px; border-radius: 14px; border: 1px dashed var(--border); background: rgba(47, 55, 66, 0.68); }
+    .metrics, .ticket-grid, .log-grid { display: grid; gap: 14px; }
+    .metrics { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
+    .ticket-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+    .log-grid { grid-template-columns: minmax(0, 1fr); }
+    .metric-value { font-size: 30px; color: var(--accent); margin-top: 8px; }
+    .status-row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 16px; }
+    .status-chip {
       display: inline-flex; align-items: center; gap: 8px; padding: 9px 12px; border-radius: 999px;
       font-size: 12px; border: 1px solid var(--border); background: rgba(47, 55, 66, 0.95);
-    }}
-    .good {{ color: var(--green); border-color: rgba(123, 240, 195, 0.35); background: rgba(123, 240, 195, 0.08); }}
-    .warn {{ color: var(--yellow); border-color: rgba(255, 215, 121, 0.35); background: rgba(255, 215, 121, 0.08); }}
-    label {{ display: block; margin-bottom: 8px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }}
-    input, select, textarea, button {{
+    }
+    .good { color: var(--green); border-color: rgba(123, 240, 195, 0.35); background: rgba(123, 240, 195, 0.08); }
+    .warn { color: var(--yellow); border-color: rgba(255, 215, 121, 0.35); background: rgba(255, 215, 121, 0.08); }
+    label { display: block; margin-bottom: 8px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+    input, select, textarea, button {
       width: 100%; padding: 12px 14px; border-radius: 14px; border: 1px solid var(--border);
       background: rgba(43, 50, 60, 0.98); color: var(--text); font: inherit;
-    }}
-    textarea {{ min-height: 110px; resize: vertical; }}
-    button {{
+    }
+    textarea { min-height: 110px; resize: vertical; }
+    button {
       cursor: pointer; background: linear-gradient(135deg, rgba(77, 121, 255, 0.34), rgba(106, 168, 255, 0.26));
       transition: transform 0.15s ease, border-color 0.15s ease, filter 0.15s ease;
       font-weight: 700;
-    }}
-    button:hover {{ transform: translateY(-1px); border-color: rgba(143, 216, 255, 0.4); filter: brightness(1.05); }}
-    button:disabled {{ opacity: 0.55; cursor: not-allowed; transform: none; filter: none; }}
-    .ghost {{ background: rgba(43, 50, 60, 0.98); }}
-    .danger-button {{ background: linear-gradient(135deg, rgba(255, 133, 133, 0.18), rgba(255, 80, 80, 0.16)); }}
-    .button-row {{ display: flex; gap: 12px; flex-wrap: wrap; }}
-    .button-row button {{ width: auto; min-width: 150px; }}
-    .stack {{ display: grid; gap: 14px; }}
-    .sidebar-title {{
+    }
+    button:hover { transform: translateY(-1px); border-color: rgba(143, 216, 255, 0.4); filter: brightness(1.05); }
+    button:disabled { opacity: 0.55; cursor: not-allowed; transform: none; filter: none; }
+    .ghost { background: rgba(43, 50, 60, 0.98); }
+    .danger-button { background: linear-gradient(135deg, rgba(255, 133, 133, 0.18), rgba(255, 80, 80, 0.16)); }
+    .button-row { display: flex; gap: 12px; flex-wrap: wrap; }
+    .button-row button { width: auto; min-width: 150px; }
+    .stack { display: grid; gap: 14px; }
+    .sidebar-title {
       font-size: 12px; text-transform: uppercase; letter-spacing: 0.14em; color: var(--muted);
       margin-bottom: 6px;
-    }}
-    .sidebar-nav {{ display: grid; gap: 10px; }}
-    .nav-button {{
+    }
+    .sidebar-nav { display: grid; gap: 10px; }
+    .nav-button {
       display: flex; align-items: center; justify-content: space-between; gap: 12px;
       text-align: left; background: rgba(43, 50, 60, 0.98); color: var(--text);
-    }}
-    .nav-button span:last-child {{
+    }
+    .nav-button span:last-child {
       font-size: 11px; color: var(--muted); padding: 4px 8px; border-radius: 999px;
       border: 1px solid var(--border); background: rgba(255,255,255,0.03);
-    }}
-    .nav-button.active {{
+    }
+    .nav-button.active {
       border-color: rgba(143, 216, 255, 0.4);
       background: linear-gradient(135deg, rgba(77, 121, 255, 0.34), rgba(106, 168, 255, 0.26));
       box-shadow: 0 14px 32px rgba(0, 0, 0, 0.18);
-    }}
-    .nav-hint {{
+    }
+    .nav-hint {
       padding: 12px 14px; border-radius: 16px; border: 1px solid var(--border);
       background: rgba(47, 55, 66, 0.72); color: var(--muted); font-size: 13px; line-height: 1.5;
-    }}
-    .login-box {{ background: linear-gradient(135deg, rgba(77, 121, 255, 0.22), rgba(106, 168, 255, 0.1)), linear-gradient(180deg, var(--panel-strong), var(--panel-soft)); }}
-    .discord-button {{ background: linear-gradient(135deg, rgba(77, 121, 255, 0.42), rgba(106, 168, 255, 0.24)); border-color: rgba(106, 168, 255, 0.4); }}
-    .session-box {{ margin-top: 14px; padding: 12px; border-radius: 14px; border: 1px solid var(--border); background: rgba(47, 55, 66, 0.74); }}
-    .session-name {{ color: var(--text); margin-bottom: 8px; }}
-    .small {{ font-size: 12px; }}
-    .panel-list, .ticket-list, .entry-list {{ display: grid; gap: 14px; }}
-    .panel-view-title {{ margin-bottom: 8px; }}
-    .panel-card, .ticket-card {{
+    }
+    .login-box { background: linear-gradient(135deg, rgba(77, 121, 255, 0.22), rgba(106, 168, 255, 0.1)), linear-gradient(180deg, var(--panel-strong), var(--panel-soft)); }
+    .discord-button { background: linear-gradient(135deg, rgba(77, 121, 255, 0.42), rgba(106, 168, 255, 0.24)); border-color: rgba(106, 168, 255, 0.4); }
+    .session-box { margin-top: 14px; padding: 12px; border-radius: 14px; border: 1px solid var(--border); background: rgba(47, 55, 66, 0.74); }
+    .session-name { color: var(--text); margin-bottom: 8px; }
+    .small { font-size: 12px; }
+    .panel-list, .ticket-list, .entry-list { display: grid; gap: 14px; }
+    .panel-view-title { margin-bottom: 8px; }
+    .panel-card, .ticket-card {
       border: 1px solid var(--border); border-radius: 18px; padding: 14px;
       background: linear-gradient(180deg, rgba(57, 64, 75, 0.96), rgba(52, 59, 68, 0.94));
-    }}
-    .panel-head, .ticket-head, .entry-head {{
+    }
+    .panel-head, .ticket-head, .entry-head {
       display: flex; justify-content: space-between; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 12px;
-    }}
-    .panel-tag, .ticket-tag, .entry-type {{
+    }
+    .panel-tag, .ticket-tag, .entry-type {
       display: inline-flex; align-items: center; padding: 6px 10px; border-radius: 999px;
       background: rgba(143, 216, 255, 0.12); border: 1px solid rgba(143, 216, 255, 0.28); color: var(--accent); font-size: 12px;
-    }}
-    .ticket-tag.warn-tag {{
+    }
+    .ticket-tag.warn-tag {
       background: rgba(255, 215, 121, 0.12);
       border-color: rgba(255, 215, 121, 0.3);
       color: var(--yellow);
-    }}
-    .panel-meta, .ticket-meta {{ display: grid; gap: 8px; color: var(--muted); font-size: 13px; margin-top: 10px; }}
-    .ticket-note-list {{ display: grid; gap: 8px; margin-top: 12px; }}
-    .ticket-note {{
+    }
+    .panel-meta, .ticket-meta { display: grid; gap: 8px; color: var(--muted); font-size: 13px; margin-top: 10px; }
+    .ticket-note-list { display: grid; gap: 8px; margin-top: 12px; }
+    .ticket-note {
       padding: 10px; border-radius: 12px; border: 1px solid var(--border); background: rgba(47, 55, 66, 0.7);
-    }}
-    pre {{
+    }
+    pre {
       margin: 0; padding: 12px; border-radius: 14px; background: rgba(35, 41, 49, 0.96);
       border: 1px solid var(--border); color: #dbe8f5; white-space: pre-wrap; word-break: break-word; overflow-x: auto;
       font-family: Consolas, "Courier New", monospace;
-    }}
-    @media (max-width: 1100px) {{ .layout, .ticket-grid {{ grid-template-columns: 1fr; }} }}
-    @media (max-width: 720px) {{
-      .page {{ width: calc(100% - 18px); margin: 10px auto 24px; }}
-      .topbar, .sidebar, .content-shell {{ padding: 14px; }}
-      .summary-card {{ min-width: 100%; }}
-    }}
+    }
+    @media (max-width: 1100px) { .layout, .ticket-grid { grid-template-columns: 1fr; } }
+    @media (max-width: 720px) {
+      .page { width: calc(100% - 18px); margin: 10px auto 24px; }
+      .topbar, .sidebar, .content-shell { padding: 14px; }
+      .summary-card { min-width: 100%; }
+    }
   </style>
 </head>
 <body>
@@ -556,7 +549,7 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
           <div class="stack">
             <div>
               <label for="apiBaseUrl">API Base URL</label>
-              <input id="apiBaseUrl" placeholder="https://api.deinedomain.de" value="{api_base_url}">
+              <input id="apiBaseUrl" placeholder="https://api.deinedomain.de" value="https://api.rysio.app">
             </div>
             <div>
               <label for="apiToken">Fallback API Token</label>
@@ -590,7 +583,7 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
     </div>
   </main>
   <script>
-    const DEFAULT_API_BASE_URL = `{api_base_url_js}`;
+    const DEFAULT_API_BASE_URL = `https://api.rysio.app`;
     const STORAGE_KEY = "rysio-control-panel";
     const SITE_NOTICE_KEY = "rysio-prelive-notice-v1";
 
@@ -675,73 +668,73 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
     let editingPanelId = null;
     let editingNotificationId = null;
 
-    function escapeHtml(value) {{
+    function escapeHtml(value) {
       return String(value).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#39;");
-    }}
+    }
 
-    function normalizeBaseUrl(value) {{
-      return value.trim().replace(/\\/$/, "");
-    }}
+    function normalizeBaseUrl(value) {
+      return value.trim().replace(/\/$/, "");
+    }
 
-    function defaultAvatarUrl() {{
+    function defaultAvatarUrl() {
       return "https://cdn.discordapp.com/embed/avatars/0.png";
-    }}
+    }
 
-    function getDiscordAvatarUrl(user) {{
+    function getDiscordAvatarUrl(user) {
       if (!user?.id) return defaultAvatarUrl();
       if (!user?.avatar) return defaultAvatarUrl();
-      return `https://cdn.discordapp.com/avatars/${{user.id}}/${{user.avatar}}.png?size=128`;
-    }}
+      return `https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.png?size=128`;
+    }
 
-    function getGuildIconUrl(guild) {{
+    function getGuildIconUrl(guild) {
       if (!guild?.id || !guild?.icon) return "";
-      return `https://cdn.discordapp.com/icons/${{guild.id}}/${{guild.icon}}.png?size=128`;
-    }}
+      return `https://cdn.discordapp.com/icons/${guild.id}/${guild.icon}.png?size=128`;
+    }
 
-    function setAvatarImage(image, url, alt) {{
-      if (!url) {{
+    function setAvatarImage(image, url, alt) {
+      if (!url) {
         image.removeAttribute("src");
         image.classList.remove("visible");
         image.alt = alt;
         return;
-      }}
+      }
       image.src = url;
       image.alt = alt;
       image.classList.add("visible");
-    }}
+    }
 
-    function updateHeaderGuild() {{
+    function updateHeaderGuild() {
       const guildId = guildSelect.value || preferredGuildId || "";
       const guild = currentSession?.guilds?.find((entry) => String(entry.id) === String(guildId));
-      if (!guild) {{
+      if (!guild) {
         headerGuildName.textContent = "Kein Server ausgewaehlt";
         headerGuildMeta.textContent = currentSession ? "Waehle einen Server aus" : "Waehle nach dem Login einen Server aus";
         setAvatarImage(headerGuildAvatar, "", "Kein Server");
         return;
-      }}
+      }
       headerGuildName.textContent = guild.name || "Discord Server";
       headerGuildMeta.textContent = guild.bot_in_guild ? "Server bereit fuer das Panel" : "Bot ist noch nicht auf dem Server";
-      setAvatarImage(headerGuildAvatar, getGuildIconUrl(guild), `${{guild.name}} Icon`);
-    }}
+      setAvatarImage(headerGuildAvatar, getGuildIconUrl(guild), `${guild.name} Icon`);
+    }
 
-    function setActivePanelView(view) {{
+    function setActivePanelView(view) {
       currentPanelView = view || "overview";
-      for (const button of panelViewButtons) {{
+      for (const button of panelViewButtons) {
         button.classList.toggle("active", button.getAttribute("data-nav-view") === currentPanelView);
-      }}
-      for (const viewSection of panelViews) {{
+      }
+      for (const viewSection of panelViews) {
         viewSection.classList.toggle("hidden", viewSection.getAttribute("data-panel-view") !== currentPanelView);
-      }}
-      if (currentPanelView === "verification" && guildSelect.value) {{
-        if (!currentOverview) {{
+      }
+      if (currentPanelView === "verification" && guildSelect.value) {
+        if (!currentOverview) {
           loadOverview();
-        }} else {{
+        } else {
           loadVerificationSettings();
-        }}
-      }}
-    }}
+        }
+      }
+    }
 
-    function updateGateState() {{
+    function updateGateState() {
       const hasSession = Boolean(sessionToken && currentSession);
       const hasGuild = Boolean(guildSelect.value);
       panelLayout.classList.toggle("gated", !hasSession || !hasGuild);
@@ -752,25 +745,25 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
       changeGuildButton.classList.toggle("hidden", !hasSession);
       headerLogoutButton.classList.toggle("hidden", !hasSession);
       selectGuildButton.disabled = !guildSelect.value;
-      if (hasSession && hasGuild) {{
+      if (hasSession && hasGuild) {
         setActivePanelView(currentPanelView);
-      }}
+      }
       updateHeaderGuild();
-    }}
+    }
 
-    function getAuthHeaders() {{
-      const headers = {{}};
-      if (sessionToken) {{
+    function getAuthHeaders() {
+      const headers = {};
+      if (sessionToken) {
         headers["X-Rysio-Panel-Token"] = sessionToken;
-      }} else {{
+      } else {
         const apiToken = apiTokenInput.value.trim();
-        if (apiToken) headers["Authorization"] = `Bearer ${{apiToken}}`;
-      }}
+        if (apiToken) headers["Authorization"] = `Bearer ${apiToken}`;
+      }
       return headers;
-    }}
+    }
 
-    function loadSavedState() {{
-      try {{
+    function loadSavedState() {
+      try {
         const raw = localStorage.getItem(STORAGE_KEY);
         if (!raw) return;
         const saved = JSON.parse(raw);
@@ -784,11 +777,11 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
         sessionToken = saved.sessionToken || "";
         preferredGuildId = saved.selectedGuildId || "";
         currentPanelView = saved.panelView || "overview";
-      }} catch {{}}
-    }}
+      } catch {}
+    }
 
-    function saveState() {{
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({{
+    function saveState() {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({
         apiBaseUrl: apiBaseUrlInput.value.trim(),
         apiToken: apiTokenInput.value.trim(),
         limit: limitInput.value.trim(),
@@ -799,51 +792,51 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
         sessionToken,
         selectedGuildId: preferredGuildId || guildSelect.value || "",
         panelView: currentPanelView,
-      }}));
+      }));
       statusText.textContent = "Panel-Daten lokal gespeichert.";
-    }}
+    }
 
-    function setError(message) {{
-      if (!message) {{
+    function setError(message) {
+      if (!message) {
         errorText.hidden = true;
         errorText.textContent = "";
         return;
-      }}
+      }
       errorText.hidden = false;
       errorText.textContent = message;
-    }}
+    }
 
-    function setOauthError(message) {{
-      if (!message) {{
+    function setOauthError(message) {
+      if (!message) {
         oauthErrorText.hidden = true;
         oauthErrorText.textContent = "";
         return;
-      }}
+      }
       oauthErrorText.hidden = false;
       oauthErrorText.textContent = message;
-    }}
+    }
 
-    function setNotificationError(message) {{
-      if (!message) {{
+    function setNotificationError(message) {
+      if (!message) {
         notificationErrorText.hidden = true;
         notificationErrorText.textContent = "";
         return;
-      }}
+      }
       notificationErrorText.hidden = false;
       notificationErrorText.textContent = message;
-    }}
+    }
 
-    function setVerificationError(message) {{
-      if (!message) {{
+    function setVerificationError(message) {
+      if (!message) {
         verificationErrorText.hidden = true;
         verificationErrorText.textContent = "";
         return;
-      }}
+      }
       verificationErrorText.hidden = false;
       verificationErrorText.textContent = message;
-    }}
+    }
 
-    function resetTicketForm() {{
+    function resetTicketForm() {
       editingPanelId = null;
       ticketFormHeading.textContent = "Neues Ticket-Panel erstellen";
       saveTicketPanelButton.textContent = "Ticket-Panel erstellen";
@@ -853,9 +846,9 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
       ticketTitleInput.value = "Support Ticket";
       ticketDescriptionInput.value = "Klicke unten auf den Button, um ein Ticket zu erstellen.";
       ticketWelcomeInput.value = "";
-    }}
+    }
 
-    function resetNotificationForm() {{
+    function resetNotificationForm() {
       editingNotificationId = null;
       notificationFormHeading.textContent = "Neue Notification erstellen";
       saveNotificationButton.textContent = "Notification speichern";
@@ -865,9 +858,9 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
       notificationMentionRoleSelect.value = "";
       notificationStatusText.textContent = "Bereit.";
       setNotificationError("");
-    }}
+    }
 
-    function resetVerificationForm() {{
+    function resetVerificationForm() {
       verificationFormHeading.textContent = "Verification einrichten";
       verificationChannelSelect.value = currentOverview?.verification?.verification_channel_id || "";
       verificationRoleSelect.value = currentOverview?.verification?.verified_role_id || "";
@@ -878,19 +871,19 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
       updateVerificationCaptchaState();
       verificationStatusText.textContent = "Bereit.";
       setVerificationError("");
-    }}
+    }
 
-    function updateVerificationCaptchaState() {{
+    function updateVerificationCaptchaState() {
       const isReactionMode = verificationCaptchaSelect.value === "reaction";
       verificationReactionEmojiWrap.hidden = !isReactionMode;
-      if (!isReactionMode) {{
+      if (!isReactionMode) {
         verificationReactionEmojiInput.value = "";
-      }}
-    }}
+      }
+    }
 
-    function fillTicketForm(panel) {{
+    function fillTicketForm(panel) {
       editingPanelId = panel.id;
-      ticketFormHeading.textContent = `Ticket-Panel bearbeiten (#${{panel.channel_name}})`;
+      ticketFormHeading.textContent = `Ticket-Panel bearbeiten (#${panel.channel_name})`;
       saveTicketPanelButton.textContent = "Ticket-Panel speichern";
       ticketChannelSelect.value = panel.channel_id || "";
       ticketCategorySelect.value = panel.category_id || "";
@@ -898,68 +891,68 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
       ticketTitleInput.value = panel.title || "Support Ticket";
       ticketDescriptionInput.value = panel.description_text || "";
       ticketWelcomeInput.value = panel.welcome_message || "";
-      statusText.textContent = `Bearbeitungsmodus fuer Panel #${{panel.id}} aktiviert.`;
-      window.scrollTo({{ top: 0, behavior: "smooth" }});
-    }}
+      statusText.textContent = `Bearbeitungsmodus fuer Panel #${panel.id} aktiviert.`;
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
 
-    function fillNotificationForm(subscription) {{
+    function fillNotificationForm(subscription) {
       editingNotificationId = subscription.id;
-      notificationFormHeading.textContent = `Notification bearbeiten (${{subscription.platform}})`;
+      notificationFormHeading.textContent = `Notification bearbeiten (${subscription.platform})`;
       saveNotificationButton.textContent = "Notification aktualisieren";
       notificationPlatformSelect.value = subscription.platform || "twitch";
       notificationTargetInput.value = subscription.target || "";
       notificationChannelSelect.value = subscription.announce_channel_id || "";
       notificationMentionRoleSelect.value = subscription.mention_role_id || "";
-      statusText.textContent = `Bearbeitungsmodus fuer Notification #${{subscription.id}} aktiviert.`;
-      notificationStatusText.textContent = `Bearbeitungsmodus fuer Notification #${{subscription.id}} aktiviert.`;
+      statusText.textContent = `Bearbeitungsmodus fuer Notification #${subscription.id} aktiviert.`;
+      notificationStatusText.textContent = `Bearbeitungsmodus fuer Notification #${subscription.id} aktiviert.`;
       setNotificationError("");
-      window.scrollTo({{ top: 0, behavior: "smooth" }});
-    }}
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
 
-    function renderVerification(verification) {{
-      if (!verification || (!verification.verification_channel_id && !verification.verified_role_id)) {{
+    function renderVerification(verification) {
+      if (!verification || (!verification.verification_channel_id && !verification.verified_role_id)) {
         verificationCurrentCard.innerHTML = '<div class="empty">Verification ist fuer diesen Server noch nicht eingerichtet.</div>';
         return;
-      }}
+      }
       verificationCurrentCard.innerHTML = `
         <article class="panel-card">
           <div class="panel-head">
             <strong>Verification aktiv</strong>
-            <span class="panel-tag">${{verification.enabled ? "Enabled" : "Pending"}}</span>
+            <span class="panel-tag">${verification.enabled ? "Enabled" : "Pending"}</span>
           </div>
           <div class="panel-meta">
-            <div>Channel: <strong>#${{escapeHtml(verification.verification_channel_name || "Unbekannt")}}</strong></div>
-            <div>Rolle: <strong>${{escapeHtml(verification.verified_role_name || "Unbekannt")}}</strong></div>
-            <div>Methode: <strong>${{escapeHtml(verification.captcha_type || "button")}}</strong></div>
-            <div>Titel: <strong>${{escapeHtml(verification.panel_title || "Rysio Standard")}}</strong></div>
-            <div>Beschreibung: ${{escapeHtml(verification.panel_description || "Rysio Standardbeschreibung aktiv.")}}</div>
-            <div>Emoji: <strong>${{escapeHtml(verification.reaction_emoji || "-")}}</strong></div>
-            <div>Message ID: <code>${{escapeHtml(verification.panel_message_id || "-")}}</code></div>
+            <div>Channel: <strong>#${escapeHtml(verification.verification_channel_name || "Unbekannt")}</strong></div>
+            <div>Rolle: <strong>${escapeHtml(verification.verified_role_name || "Unbekannt")}</strong></div>
+            <div>Methode: <strong>${escapeHtml(verification.captcha_type || "button")}</strong></div>
+            <div>Titel: <strong>${escapeHtml(verification.panel_title || "Rysio Standard")}</strong></div>
+            <div>Beschreibung: ${escapeHtml(verification.panel_description || "Rysio Standardbeschreibung aktiv.")}</div>
+            <div>Emoji: <strong>${escapeHtml(verification.reaction_emoji || "-")}</strong></div>
+            <div>Message ID: <code>${escapeHtml(verification.panel_message_id || "-")}</code></div>
           </div>
         </article>
       `;
-    }}
+    }
 
-    function populateGuildSelect(guilds) {{
+    function populateGuildSelect(guilds) {
       const currentValue = guildSelect.value;
       guildSelect.innerHTML = '<option value="">Server auswaehlen</option>';
-      for (const guild of guilds) {{
+      for (const guild of guilds) {
         const option = document.createElement("option");
         option.value = guild.id;
-        option.textContent = guild.bot_in_guild ? guild.name : `${{guild.name}} (Bot fehlt)`;
+        option.textContent = guild.bot_in_guild ? guild.name : `${guild.name} (Bot fehlt)`;
         option.disabled = !guild.bot_in_guild;
         guildSelect.appendChild(option);
-      }}
+      }
       const nextValue = preferredGuildId || currentValue;
-      if (nextValue && [...guildSelect.options].some((option) => option.value === nextValue && !option.disabled)) {{
+      if (nextValue && [...guildSelect.options].some((option) => option.value === nextValue && !option.disabled)) {
         guildSelect.value = nextValue;
-      }}
+      }
       guildCountStat.textContent = String(guilds.length);
-    }}
+    }
 
-    function renderSession(session) {{
+    function renderSession(session) {
       currentSession = session;
-      if (!session) {{
+      if (!session) {
         sessionUserText.textContent = "Noch nicht eingeloggt.";
         sessionGuildCountText.textContent = "0 verwaltbare Server von Discord geladen.";
         headerUserName.textContent = "Nicht eingeloggt";
@@ -968,171 +961,171 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
         populateGuildSelect([]);
         updateGateState();
         return;
-      }}
+      }
       const username = session.user?.global_name || session.user?.username || "Discord User";
-      sessionUserText.textContent = `Eingeloggt als ${{username}}.`;
-      sessionGuildCountText.textContent = `${{session.guilds.length}} verwaltbare Server von Discord geladen.`;
-       headerUserName.textContent = username;
-       headerUserMeta.textContent = `${{session.guilds.length}} verwaltbare Server`;
-       setAvatarImage(headerUserAvatar, getDiscordAvatarUrl(session.user), `${{username}} Avatar`);
+      sessionUserText.textContent = `Eingeloggt als ${username}.`;
+      sessionGuildCountText.textContent = `${session.guilds.length} verwaltbare Server von Discord geladen.`;
+      headerUserName.textContent = username;
+      headerUserMeta.textContent = `${session.guilds.length} verwaltbare Server`;
+      setAvatarImage(headerUserAvatar, getDiscordAvatarUrl(session.user), `${username} Avatar`);
       populateGuildSelect(session.guilds);
       updateGateState();
-    }}
+    }
 
-    function renderNotifications(subscriptions) {{
+    function renderNotifications(subscriptions) {
       notificationCountStat.textContent = String(subscriptions.length);
-      if (!subscriptions.length) {{
+      if (!subscriptions.length) {
         notificationList.innerHTML = '<div class="empty">Noch keine Notifications fuer diesen Server gefunden.</div>';
         return;
-      }}
+      }
       notificationList.innerHTML = subscriptions.map((subscription) => `
         <article class="panel-card">
           <div class="panel-head">
-            <strong>${{escapeHtml(subscription.platform)}} | ${{escapeHtml(subscription.target)}}</strong>
-            <span class="panel-tag">Notification-ID ${{escapeHtml(subscription.id)}}</span>
+            <strong>${escapeHtml(subscription.platform)} | ${escapeHtml(subscription.target)}</strong>
+            <span class="panel-tag">Notification-ID ${escapeHtml(subscription.id)}</span>
           </div>
           <div class="panel-meta">
-            <div>Channel: <strong>#${{escapeHtml(subscription.announce_channel_name)}}</strong></div>
-            <div>Mention Rolle: ${{escapeHtml(subscription.mention_role_name || "Keine")}}</div>
-            <div>Letzter Inhalt: <code>${{escapeHtml(subscription.last_seen_content_id || "-")}}</code></div>
-            <div>Status: ${{subscription.enabled ? "aktiv" : "deaktiviert"}}</div>
+            <div>Channel: <strong>#${escapeHtml(subscription.announce_channel_name)}</strong></div>
+            <div>Mention Rolle: ${escapeHtml(subscription.mention_role_name || "Keine")}</div>
+            <div>Letzter Inhalt: <code>${escapeHtml(subscription.last_seen_content_id || "-")}</code></div>
+            <div>Status: ${subscription.enabled ? "aktiv" : "deaktiviert"}</div>
           </div>
           <div class="button-row" style="margin-top:14px;">
-            <button type="button" data-edit-notification-id="${{escapeHtml(subscription.id)}}">Bearbeiten</button>
-            <button type="button" class="danger-button" data-delete-notification-id="${{escapeHtml(subscription.id)}}">Loeschen</button>
+            <button type="button" data-edit-notification-id="${escapeHtml(subscription.id)}">Bearbeiten</button>
+            <button type="button" class="danger-button" data-delete-notification-id="${escapeHtml(subscription.id)}">Loeschen</button>
           </div>
         </article>
       `).join("");
 
-      for (const button of notificationList.querySelectorAll("[data-edit-notification-id]")) {{
-        button.addEventListener("click", () => {{
+      for (const button of notificationList.querySelectorAll("[data-edit-notification-id]")) {
+        button.addEventListener("click", () => {
           const subscription = subscriptions.find((entry) => String(entry.id) === String(button.getAttribute("data-edit-notification-id")));
           if (subscription) fillNotificationForm(subscription);
-        }});
-      }}
-      for (const button of notificationList.querySelectorAll("[data-delete-notification-id]")) {{
-        button.addEventListener("click", async () => {{
+        });
+      }
+      for (const button of notificationList.querySelectorAll("[data-delete-notification-id]")) {
+        button.addEventListener("click", async () => {
           await deleteNotification(button.getAttribute("data-delete-notification-id"));
-        }});
-      }}
-    }}
+        });
+      }
+    }
 
-    function renderTicketPanels(panels) {{
+    function renderTicketPanels(panels) {
       ticketPanelCountStat.textContent = String(panels.length);
-      if (!panels.length) {{
+      if (!panels.length) {
         ticketPanelsList.innerHTML = '<div class="empty">Noch keine Ticket-Panels fuer diesen Server gefunden.</div>';
         return;
-      }}
+      }
       ticketPanelsList.innerHTML = panels.map((panel) => `
         <article class="panel-card">
           <div class="panel-head">
-            <strong>#${{escapeHtml(panel.channel_name)}}</strong>
-            <span class="panel-tag">Panel-ID ${{escapeHtml(panel.id)}}</span>
+            <strong>#${escapeHtml(panel.channel_name)}</strong>
+            <span class="panel-tag">Panel-ID ${escapeHtml(panel.id)}</span>
           </div>
           <div class="panel-meta">
-            <div>Titel: <strong>${{escapeHtml(panel.title || "Support Ticket")}}</strong></div>
-            <div>Beschreibung: ${{escapeHtml(panel.description_text || "-")}}</div>
-            <div>Kategorie: ${{escapeHtml(panel.category_name || "Keine")}}</div>
-            <div>Support Rolle: ${{escapeHtml(panel.support_role_name || "Keine")}}</div>
-            <div>Welcome: ${{escapeHtml(panel.welcome_message || "Keine Auto-Nachricht gesetzt.")}}</div>
-            <div>Message ID: <code>${{escapeHtml(panel.message_id)}}</code></div>
+            <div>Titel: <strong>${escapeHtml(panel.title || "Support Ticket")}</strong></div>
+            <div>Beschreibung: ${escapeHtml(panel.description_text || "-")}</div>
+            <div>Kategorie: ${escapeHtml(panel.category_name || "Keine")}</div>
+            <div>Support Rolle: ${escapeHtml(panel.support_role_name || "Keine")}</div>
+            <div>Welcome: ${escapeHtml(panel.welcome_message || "Keine Auto-Nachricht gesetzt.")}</div>
+            <div>Message ID: <code>${escapeHtml(panel.message_id)}</code></div>
           </div>
           <div class="button-row" style="margin-top:14px;">
-            <button type="button" data-edit-panel-id="${{escapeHtml(panel.id)}}">Panel bearbeiten</button>
-            <button type="button" class="danger-button" data-delete-panel-id="${{escapeHtml(panel.id)}}">Panel loeschen</button>
+            <button type="button" data-edit-panel-id="${escapeHtml(panel.id)}">Panel bearbeiten</button>
+            <button type="button" class="danger-button" data-delete-panel-id="${escapeHtml(panel.id)}">Panel loeschen</button>
           </div>
         </article>
       `).join("");
 
-      for (const button of ticketPanelsList.querySelectorAll("[data-edit-panel-id]")) {{
-        button.addEventListener("click", () => {{
+      for (const button of ticketPanelsList.querySelectorAll("[data-edit-panel-id]")) {
+        button.addEventListener("click", () => {
           const panel = panels.find((entry) => String(entry.id) === String(button.getAttribute("data-edit-panel-id")));
           if (panel) fillTicketForm(panel);
-        }});
-      }}
-      for (const button of ticketPanelsList.querySelectorAll("[data-delete-panel-id]")) {{
-        button.addEventListener("click", async () => {{
+        });
+      }
+      for (const button of ticketPanelsList.querySelectorAll("[data-delete-panel-id]")) {
+        button.addEventListener("click", async () => {
           await deleteTicketPanel(button.getAttribute("data-delete-panel-id"));
-        }});
-      }}
-    }}
+        });
+      }
+    }
 
-    function renderActiveTickets(tickets) {{
+    function renderActiveTickets(tickets) {
       activeTicketCountStat.textContent = String(tickets.length);
-      if (!tickets.length) {{
+      if (!tickets.length) {
         activeTicketsList.innerHTML = '<div class="empty">Keine offenen Tickets fuer diesen Server gefunden.</div>';
         return;
-      }}
+      }
       activeTicketsList.innerHTML = tickets.map((ticket) => `
         <article class="ticket-card">
           <div class="ticket-head">
             <div>
-              <strong>#${{escapeHtml(ticket.channel_name)}}</strong>
-              <p class="muted small">Ticket-ID ${{escapeHtml(ticket.id)}} | Ersteller: ${{escapeHtml(ticket.opener_name)}}</p>
+              <strong>#${escapeHtml(ticket.channel_name)}</strong>
+              <p class="muted small">Ticket-ID ${escapeHtml(ticket.id)} | Ersteller: ${escapeHtml(ticket.opener_name)}</p>
             </div>
-            <span class="ticket-tag ${{ticket.status === "waiting_user" ? "warn-tag" : ""}}">${{escapeHtml(ticket.status)}}</span>
+            <span class="ticket-tag ${ticket.status === "waiting_user" ? "warn-tag" : ""}">${escapeHtml(ticket.status)}</span>
           </div>
           <div class="ticket-meta">
-            <div>Claimed By: ${{escapeHtml(ticket.claimed_by_name || "-")}}</div>
-            <div>Erstellt: ${{escapeHtml(ticket.created_at || "-")}}</div>
-            <div>Transcript: ${{escapeHtml(ticket.transcript_path || "-")}}</div>
+            <div>Claimed By: ${escapeHtml(ticket.claimed_by_name || "-")}</div>
+            <div>Erstellt: ${escapeHtml(ticket.created_at || "-")}</div>
+            <div>Transcript: ${escapeHtml(ticket.transcript_path || "-")}</div>
           </div>
           <div class="button-row" style="margin-top:14px;">
-            <button type="button" data-claim-ticket-id="${{escapeHtml(ticket.id)}}">Claim</button>
-            <button type="button" class="ghost" data-waiting-ticket-id="${{escapeHtml(ticket.id)}}">Wartet auf User</button>
-            <button type="button" class="danger-button" data-close-ticket-id="${{escapeHtml(ticket.id)}}">Close</button>
+            <button type="button" data-claim-ticket-id="${escapeHtml(ticket.id)}">Claim</button>
+            <button type="button" class="ghost" data-waiting-ticket-id="${escapeHtml(ticket.id)}">Wartet auf User</button>
+            <button type="button" class="danger-button" data-close-ticket-id="${escapeHtml(ticket.id)}">Close</button>
           </div>
           <div class="stack" style="margin-top:14px;">
             <div>
-              <label for="ticket-note-${{escapeHtml(ticket.id)}}">Team-Notiz</label>
-              <textarea id="ticket-note-${{escapeHtml(ticket.id)}}" placeholder="Interne Notiz fuer das Team..."></textarea>
+              <label for="ticket-note-${escapeHtml(ticket.id)}">Team-Notiz</label>
+              <textarea id="ticket-note-${escapeHtml(ticket.id)}" placeholder="Interne Notiz fuer das Team..."></textarea>
             </div>
             <div class="button-row">
-              <button type="button" data-note-ticket-id="${{escapeHtml(ticket.id)}}">Notiz speichern</button>
+              <button type="button" data-note-ticket-id="${escapeHtml(ticket.id)}">Notiz speichern</button>
             </div>
           </div>
           <div class="ticket-note-list">
-            ${{ticket.notes && ticket.notes.length ? ticket.notes.map((note) => `
+            ${ticket.notes && ticket.notes.length ? ticket.notes.map((note) => `
               <div class="ticket-note">
-                <strong>${{escapeHtml(note.author_username)}}</strong>
-                <div class="muted small">${{escapeHtml(note.created_at || "-")}}</div>
-                <div>${{escapeHtml(note.note_text)}}</div>
+                <strong>${escapeHtml(note.author_username)}</strong>
+                <div class="muted small">${escapeHtml(note.created_at || "-")}</div>
+                <div>${escapeHtml(note.note_text)}</div>
               </div>
-            `).join("") : '<div class="empty">Noch keine Team-Notizen.</div>'}}
+            `).join("") : '<div class="empty">Noch keine Team-Notizen.</div>'}
           </div>
         </article>
       `).join("");
 
-      for (const button of activeTicketsList.querySelectorAll("[data-claim-ticket-id]")) {{
+      for (const button of activeTicketsList.querySelectorAll("[data-claim-ticket-id]")) {
         button.addEventListener("click", async () => runTicketAction(button.getAttribute("data-claim-ticket-id"), "claim"));
-      }}
-      for (const button of activeTicketsList.querySelectorAll("[data-waiting-ticket-id]")) {{
+      }
+      for (const button of activeTicketsList.querySelectorAll("[data-waiting-ticket-id]")) {
         button.addEventListener("click", async () => runTicketAction(button.getAttribute("data-waiting-ticket-id"), "waiting-user"));
-      }}
-      for (const button of activeTicketsList.querySelectorAll("[data-close-ticket-id]")) {{
+      }
+      for (const button of activeTicketsList.querySelectorAll("[data-close-ticket-id]")) {
         button.addEventListener("click", async () => runTicketAction(button.getAttribute("data-close-ticket-id"), "close"));
-      }}
-      for (const button of activeTicketsList.querySelectorAll("[data-note-ticket-id]")) {{
-        button.addEventListener("click", async () => {{
+      }
+      for (const button of activeTicketsList.querySelectorAll("[data-note-ticket-id]")) {
+        button.addEventListener("click", async () => {
           const ticketId = button.getAttribute("data-note-ticket-id");
-          const textarea = document.getElementById(`ticket-note-${{ticketId}}`);
+          const textarea = document.getElementById(`ticket-note-${ticketId}`);
           await saveTicketNote(ticketId, textarea.value);
-        }});
-      }}
-    }}
+        });
+      }
+    }
 
-    function renderEntries(items) {{
-      if (!items.length) {{
+    function renderEntries(items) {
+      if (!items.length) {
         entries.innerHTML = '<div class="empty">Keine Log-Eintraege fuer diese Auswahl gefunden.</div>';
         return;
-      }}
-      entries.innerHTML = items.map((item) => {{
-        const details = item.details ? JSON.stringify(item.details, null, 2) : "{{}}";
-        return `<article class="entry"><div class="entry-head"><span class="entry-type">${{escapeHtml(item.event_type)}}</span><span class="meta">${{escapeHtml(item.created_at || "unbekannt")}}</span></div><p class="meta">${{escapeHtml(item.summary)}}</p><pre>${{escapeHtml(details)}}</pre></article>`;
-      }}).join("");
-    }}
+      }
+      entries.innerHTML = items.map((item) => {
+        const details = item.details ? JSON.stringify(item.details, null, 2) : "{}";
+        return `<article class="entry"><div class="entry-head"><span class="entry-type">${escapeHtml(item.event_type)}</span><span class="meta">${escapeHtml(item.created_at || "unbekannt")}</span></div><p class="meta">${escapeHtml(item.summary)}</p><pre>${escapeHtml(details)}</pre></article>`;
+      }).join("");
+    }
 
-    function renderOverview(overview) {{
+    function renderOverview(overview) {
       currentOverview = overview;
       selectedGuildIdText.textContent = overview.guild.id;
       selectedGuildNameText.textContent = overview.guild.name;
@@ -1143,35 +1136,35 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
       ticketChannelSelect.innerHTML = '<option value="">Channel auswaehlen</option>';
       notificationChannelSelect.innerHTML = '<option value="">Channel auswaehlen</option>';
       verificationChannelSelect.innerHTML = '<option value="">Channel auswaehlen</option>';
-      for (const channel of overview.channels || []) {{
+      for (const channel of overview.channels || []) {
         const option = document.createElement("option");
         option.value = channel.id;
-        option.textContent = `#${{channel.name}}`;
+        option.textContent = `#${channel.name}`;
         ticketChannelSelect.appendChild(option);
 
         const notificationOption = document.createElement("option");
         notificationOption.value = channel.id;
-        notificationOption.textContent = `#${{channel.name}}`;
+        notificationOption.textContent = `#${channel.name}`;
         notificationChannelSelect.appendChild(notificationOption);
 
         const verificationOption = document.createElement("option");
         verificationOption.value = channel.id;
-        verificationOption.textContent = `#${{channel.name}}`;
+        verificationOption.textContent = `#${channel.name}`;
         verificationChannelSelect.appendChild(verificationOption);
-      }}
+      }
 
       ticketCategorySelect.innerHTML = '<option value="">Keine Kategorie</option>';
-      for (const category of overview.categories || []) {{
+      for (const category of overview.categories || []) {
         const option = document.createElement("option");
         option.value = category.id;
         option.textContent = category.name;
         ticketCategorySelect.appendChild(option);
-      }}
+      }
 
       ticketSupportRoleSelect.innerHTML = '<option value="">Keine Support Rolle</option>';
       notificationMentionRoleSelect.innerHTML = '<option value="">Keine Mention Rolle</option>';
       verificationRoleSelect.innerHTML = '<option value="">Rolle auswaehlen</option>';
-      for (const role of overview.roles || []) {{
+      for (const role of overview.roles || []) {
         const option = document.createElement("option");
         option.value = role.id;
         option.textContent = role.name;
@@ -1186,81 +1179,81 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
         verificationRoleOption.value = role.id;
         verificationRoleOption.textContent = role.name;
         verificationRoleSelect.appendChild(verificationRoleOption);
-      }}
+      }
 
       renderNotifications(overview.notifications || []);
       renderVerification(overview.verification || null);
       renderTicketPanels(overview.ticket_panels || []);
       renderActiveTickets(overview.active_tickets || []);
       resetVerificationForm();
-    }}
+    }
 
-    async function loadVerificationSettings() {{
+    async function loadVerificationSettings() {
       const guildId = guildSelect.value;
       const apiBaseUrl = normalizeBaseUrl(apiBaseUrlInput.value || DEFAULT_API_BASE_URL);
-      if (!guildId) {{
+      if (!guildId) {
         verificationCurrentCard.innerHTML = '<div class="empty">Waehle zuerst einen Server aus.</div>';
         return;
-      }}
+      }
 
-      try {{
-        const response = await fetch(`${{apiBaseUrl}}/api/guilds/${{guildId}}/verification`, {{
+      try {
+        const response = await fetch(`${apiBaseUrl}/api/guilds/${guildId}/verification`, {
           headers: getAuthHeaders(),
-        }});
+        });
         const payload = await response.json();
-        if (!response.ok) throw new Error(payload.error || `HTTP ${{response.status}}`);
+        if (!response.ok) throw new Error(payload.error || `HTTP ${response.status}`);
         renderVerification(payload.verification || null);
-        if (currentOverview) {{
+        if (currentOverview) {
           currentOverview.verification = payload.verification || null;
           resetVerificationForm();
-        }}
-      }} catch (error) {{
-        setVerificationError(`Verification-Laden fehlgeschlagen: ${{error.message}}`);
+        }
+      } catch (error) {
+        setVerificationError(`Verification-Laden fehlgeschlagen: ${error.message}`);
         verificationCurrentCard.innerHTML = '<div class="empty">Verification konnte nicht geladen werden.</div>';
-      }}
-    }}
+      }
+    }
 
-    function readHashState() {{
+    function readHashState() {
       const fragment = window.location.hash.startsWith("#") ? window.location.hash.slice(1) : "";
       const params = new URLSearchParams(fragment);
       const token = params.get("rysio_panel_token") || "";
       const oauthError = params.get("rysio_oauth_error") || "";
-      if (token) {{
+      if (token) {
         sessionToken = token;
         saveState();
-      }}
-      if (oauthError) setOauthError(`Discord Login Fehler: ${{oauthError}}`);
+      }
+      if (oauthError) setOauthError(`Discord Login Fehler: ${oauthError}`);
       if (fragment) history.replaceState(null, "", window.location.pathname + window.location.search);
-    }}
+    }
 
-    async function fetchPanelSession() {{
-      if (!sessionToken) {{
+    async function fetchPanelSession() {
+      if (!sessionToken) {
         renderSession(null);
         return;
-      }}
-      try {{
-        const response = await fetch(`${{normalizeBaseUrl(apiBaseUrlInput.value || DEFAULT_API_BASE_URL)}}/api/panel/session`, {{
-          headers: {{ "X-Rysio-Panel-Token": sessionToken }},
-        }});
+      }
+      try {
+        const response = await fetch(`${normalizeBaseUrl(apiBaseUrlInput.value || DEFAULT_API_BASE_URL)}/api/panel/session`, {
+          headers: { "X-Rysio-Panel-Token": sessionToken },
+        });
         const payload = await response.json();
         if (!response.ok) throw new Error(payload.error || "session_failed");
         renderSession(payload);
         setOauthError("");
         saveState();
-      }} catch (error) {{
+      } catch (error) {
         sessionToken = "";
         preferredGuildId = "";
         renderSession(null);
         setOauthError("Discord-Session ist ungueltig oder abgelaufen.");
         statusText.textContent = error.message || "Session konnte nicht geladen werden.";
         saveState();
-      }}
-    }}
+      }
+    }
 
-    async function loadOverview() {{
+    async function loadOverview() {
       const guildId = guildSelect.value;
       const apiBaseUrl = normalizeBaseUrl(apiBaseUrlInput.value || DEFAULT_API_BASE_URL);
-      if (!guildId) {{
+      if (!guildId) {
         currentOverview = null;
         selectedGuildIdText.textContent = "-";
         selectedGuildNameText.textContent = "Noch kein Server ausgewaehlt.";
@@ -1275,23 +1268,23 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
         resetNotificationForm();
         resetVerificationForm();
         return;
-      }}
+      }
 
       saveState();
       setError("");
       statusText.textContent = "Serverdaten werden geladen...";
-      try {{
-        const response = await fetch(`${{apiBaseUrl}}/api/guilds/${{guildId}}/overview`, {{
+      try {
+        const response = await fetch(`${apiBaseUrl}/api/guilds/${guildId}/overview`, {
           headers: getAuthHeaders(),
-        }});
+        });
         const payload = await response.json();
-        if (!response.ok) throw new Error(payload.error || `HTTP ${{response.status}}`);
+        if (!response.ok) throw new Error(payload.error || `HTTP ${response.status}`);
         renderOverview(payload);
         resetTicketForm();
         resetNotificationForm();
         resetVerificationForm();
-        statusText.textContent = `Serverdaten fuer ${{payload.guild.name}} geladen.`;
-      }} catch (error) {{
+        statusText.textContent = `Serverdaten fuer ${payload.guild.name} geladen.`;
+      } catch (error) {
         currentOverview = null;
         notificationList.innerHTML = '<div class="empty">Notifications konnten nicht geladen werden.</div>';
         verificationCurrentCard.innerHTML = '<div class="empty">Verification konnte nicht geladen werden.</div>';
@@ -1300,161 +1293,161 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
         notificationCountStat.textContent = "0";
         ticketPanelCountStat.textContent = "0";
         activeTicketCountStat.textContent = "0";
-        setError(`Serverdaten fehlgeschlagen: ${{error.message}}`);
+        setError(`Serverdaten fehlgeschlagen: ${error.message}`);
         statusText.textContent = "Fehler beim Laden der Serverdaten.";
-      }}
-    }}
+      }
+    }
 
-    async function saveNotification() {{
+    async function saveNotification() {
       const guildId = guildSelect.value;
       const apiBaseUrl = normalizeBaseUrl(apiBaseUrlInput.value || DEFAULT_API_BASE_URL);
       const wasEditing = Boolean(editingNotificationId);
-      const payload = {{
+      const payload = {
         platform: notificationPlatformSelect.value,
         target: notificationTargetInput.value.trim(),
         announce_channel_id: notificationChannelSelect.value,
         mention_role_id: notificationMentionRoleSelect.value,
-      }};
+      };
 
-      if (!guildId) {{
+      if (!guildId) {
         setError("Bitte zuerst einen Discord Server auswaehlen.");
         setNotificationError("Bitte zuerst einen Discord Server auswaehlen.");
         notificationStatusText.textContent = "Notification konnte nicht gespeichert werden.";
         return;
-      }}
-      if (!payload.platform || !payload.target || !payload.announce_channel_id) {{
+      }
+      if (!payload.platform || !payload.target || !payload.announce_channel_id) {
         setError("Bitte Plattform, Target und Channel fuellen.");
         setNotificationError("Bitte Plattform, Target und Channel fuellen.");
         notificationStatusText.textContent = "Pflichtfelder fehlen.";
         return;
-      }}
+      }
 
       setError("");
       setNotificationError("");
       statusText.textContent = wasEditing ? "Notification wird aktualisiert..." : "Notification wird erstellt...";
       notificationStatusText.textContent = wasEditing ? "Notification wird aktualisiert..." : "Notification wird erstellt...";
-      try {{
+      try {
         const endpoint = wasEditing
-          ? `${{apiBaseUrl}}/api/guilds/${{guildId}}/notifications/${{editingNotificationId}}`
-          : `${{apiBaseUrl}}/api/guilds/${{guildId}}/notifications`;
+          ? `${apiBaseUrl}/api/guilds/${guildId}/notifications/${editingNotificationId}`
+          : `${apiBaseUrl}/api/guilds/${guildId}/notifications`;
         const method = wasEditing ? "PATCH" : "POST";
-        const response = await fetch(endpoint, {{
+        const response = await fetch(endpoint, {
           method,
-          headers: {{
+          headers: {
             ...getAuthHeaders(),
             "Content-Type": "application/json",
-          }},
+          },
           body: JSON.stringify(payload),
-        }});
+        });
         const body = await response.json();
-        if (!response.ok) throw new Error(body.error || `HTTP ${{response.status}}`);
+        if (!response.ok) throw new Error(body.error || `HTTP ${response.status}`);
         resetNotificationForm();
         await loadOverview();
         statusText.textContent = wasEditing ? "Notification gespeichert." : "Notification erstellt.";
         notificationStatusText.textContent = wasEditing ? "Notification gespeichert." : "Notification erstellt.";
-      }} catch (error) {{
-        setError(`Notification fehlgeschlagen: ${{error.message}}`);
-        setNotificationError(`Notification fehlgeschlagen: ${{error.message}}`);
+      } catch (error) {
+        setError(`Notification fehlgeschlagen: ${error.message}`);
+        setNotificationError(`Notification fehlgeschlagen: ${error.message}`);
         statusText.textContent = "Notification konnte nicht gespeichert werden.";
         notificationStatusText.textContent = "Notification konnte nicht gespeichert werden.";
-      }}
-    }}
+      }
+    }
 
-    async function saveVerification() {{
+    async function saveVerification() {
       const guildId = guildSelect.value;
       const apiBaseUrl = normalizeBaseUrl(apiBaseUrlInput.value || DEFAULT_API_BASE_URL);
-      const payload = {{
+      const payload = {
         verification_channel_id: verificationChannelSelect.value,
         verified_role_id: verificationRoleSelect.value,
         panel_title: verificationTitleInput.value.trim(),
         panel_description: verificationDescriptionInput.value.trim(),
         captcha_type: verificationCaptchaSelect.value,
         reaction_emoji: verificationReactionEmojiInput.value.trim(),
-      }};
+      };
 
-      if (!guildId) {{
+      if (!guildId) {
         setError("Bitte zuerst einen Discord Server auswaehlen.");
         setVerificationError("Bitte zuerst einen Discord Server auswaehlen.");
         verificationStatusText.textContent = "Verification konnte nicht gespeichert werden.";
         return;
-      }}
-      if (!payload.verification_channel_id || !payload.verified_role_id) {{
+      }
+      if (!payload.verification_channel_id || !payload.verified_role_id) {
         setError("Bitte Verification-Channel und Verified Rolle auswaehlen.");
         setVerificationError("Bitte Verification-Channel und Verified Rolle auswaehlen.");
         verificationStatusText.textContent = "Pflichtfelder fehlen.";
         return;
-      }}
-      if (payload.captcha_type === "reaction" && !payload.reaction_emoji) {{
+      }
+      if (payload.captcha_type === "reaction" && !payload.reaction_emoji) {
         setError("Bitte fuer den Reaction-Modus ein Emoji eintragen.");
         setVerificationError("Bitte fuer den Reaction-Modus ein Emoji eintragen.");
         verificationStatusText.textContent = "Reaction-Emoji fehlt.";
         return;
-      }}
+      }
 
       setError("");
       setVerificationError("");
       statusText.textContent = "Verification wird gespeichert...";
       verificationStatusText.textContent = "Verification wird gespeichert...";
-      try {{
-        const response = await fetch(`${{apiBaseUrl}}/api/guilds/${{guildId}}/verification`, {{
+      try {
+        const response = await fetch(`${apiBaseUrl}/api/guilds/${guildId}/verification`, {
           method: "PUT",
-          headers: {{
+          headers: {
             ...getAuthHeaders(),
             "Content-Type": "application/json",
-          }},
+          },
           body: JSON.stringify(payload),
-        }});
+        });
         const body = await response.json();
-        if (!response.ok) throw new Error(body.error || `HTTP ${{response.status}}`);
+        if (!response.ok) throw new Error(body.error || `HTTP ${response.status}`);
         await loadOverview();
         await loadVerificationSettings();
         verificationStatusText.textContent = "Verification gespeichert und Panel aktualisiert.";
         statusText.textContent = "Verification gespeichert und Panel aktualisiert.";
-      }} catch (error) {{
-        setError(`Verification fehlgeschlagen: ${{error.message}}`);
-        setVerificationError(`Verification fehlgeschlagen: ${{error.message}}`);
+      } catch (error) {
+        setError(`Verification fehlgeschlagen: ${error.message}`);
+        setVerificationError(`Verification fehlgeschlagen: ${error.message}`);
         verificationStatusText.textContent = "Verification konnte nicht gespeichert werden.";
         statusText.textContent = "Verification konnte nicht gespeichert werden.";
-      }}
-    }}
+      }
+    }
 
-    async function deleteVerification() {{
+    async function deleteVerification() {
       const guildId = guildSelect.value;
       const apiBaseUrl = normalizeBaseUrl(apiBaseUrlInput.value || DEFAULT_API_BASE_URL);
-      if (!guildId) {{
+      if (!guildId) {
         setError("Bitte zuerst einen Discord Server auswaehlen.");
         setVerificationError("Bitte zuerst einen Discord Server auswaehlen.");
         verificationStatusText.textContent = "Kein Server ausgewaehlt.";
         return;
-      }}
+      }
 
       setError("");
       setVerificationError("");
       statusText.textContent = "Verification wird geloescht...";
       verificationStatusText.textContent = "Verification wird geloescht...";
-      try {{
-        const response = await fetch(`${{apiBaseUrl}}/api/guilds/${{guildId}}/verification`, {{
+      try {
+        const response = await fetch(`${apiBaseUrl}/api/guilds/${guildId}/verification`, {
           method: "DELETE",
           headers: getAuthHeaders(),
-        }});
+        });
         const body = await response.json();
-        if (!response.ok) throw new Error(body.error || `HTTP ${{response.status}}`);
-        if (currentOverview) {{
+        if (!response.ok) throw new Error(body.error || `HTTP ${response.status}`);
+        if (currentOverview) {
           currentOverview.verification = body.verification || null;
-        }}
+        }
         renderVerification(body.verification || null);
         resetVerificationForm();
         verificationStatusText.textContent = "Verification geloescht.";
         statusText.textContent = "Verification geloescht.";
-      }} catch (error) {{
-        setError(`Verification-Loeschen fehlgeschlagen: ${{error.message}}`);
-        setVerificationError(`Verification-Loeschen fehlgeschlagen: ${{error.message}}`);
+      } catch (error) {
+        setError(`Verification-Loeschen fehlgeschlagen: ${error.message}`);
+        setVerificationError(`Verification-Loeschen fehlgeschlagen: ${error.message}`);
         verificationStatusText.textContent = "Verification konnte nicht geloescht werden.";
         statusText.textContent = "Verification konnte nicht geloescht werden.";
-      }}
-    }}
+      }
+    }
 
-    async function deleteNotification(subscriptionId) {{
+    async function deleteNotification(subscriptionId) {
       const guildId = guildSelect.value;
       const apiBaseUrl = normalizeBaseUrl(apiBaseUrlInput.value || DEFAULT_API_BASE_URL);
       if (!guildId || !subscriptionId) return;
@@ -1462,218 +1455,218 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
       setNotificationError("");
       statusText.textContent = "Notification wird geloescht...";
       notificationStatusText.textContent = "Notification wird geloescht...";
-      try {{
-        const response = await fetch(`${{apiBaseUrl}}/api/guilds/${{guildId}}/notifications/${{subscriptionId}}`, {{
+      try {
+        const response = await fetch(`${apiBaseUrl}/api/guilds/${guildId}/notifications/${subscriptionId}`, {
           method: "DELETE",
           headers: getAuthHeaders(),
-        }});
+        });
         const body = await response.json();
-        if (!response.ok) throw new Error(body.error || `HTTP ${{response.status}}`);
+        if (!response.ok) throw new Error(body.error || `HTTP ${response.status}`);
         if (String(editingNotificationId) === String(subscriptionId)) resetNotificationForm();
         await loadOverview();
         statusText.textContent = "Notification geloescht.";
         notificationStatusText.textContent = "Notification geloescht.";
-      }} catch (error) {{
-        setError(`Notification-Loeschen fehlgeschlagen: ${{error.message}}`);
-        setNotificationError(`Notification-Loeschen fehlgeschlagen: ${{error.message}}`);
+      } catch (error) {
+        setError(`Notification-Loeschen fehlgeschlagen: ${error.message}`);
+        setNotificationError(`Notification-Loeschen fehlgeschlagen: ${error.message}`);
         statusText.textContent = "Notification konnte nicht geloescht werden.";
         notificationStatusText.textContent = "Notification konnte nicht geloescht werden.";
-      }}
-    }}
+      }
+    }
 
-    async function checkNotificationsNow() {{
+    async function checkNotificationsNow() {
       const guildId = guildSelect.value;
       const apiBaseUrl = normalizeBaseUrl(apiBaseUrlInput.value || DEFAULT_API_BASE_URL);
-      if (!guildId) {{
+      if (!guildId) {
         setError("Bitte zuerst einen Discord Server auswaehlen.");
         setNotificationError("Bitte zuerst einen Discord Server auswaehlen.");
         notificationStatusText.textContent = "Notification-Check konnte nicht gestartet werden.";
         return;
-      }}
+      }
       setError("");
       setNotificationError("");
       statusText.textContent = "Notifications werden jetzt manuell geprueft...";
       notificationStatusText.textContent = "Notifications werden jetzt manuell geprueft...";
-      try {{
-        const response = await fetch(`${{apiBaseUrl}}/api/guilds/${{guildId}}/notifications/check`, {{
+      try {
+        const response = await fetch(`${apiBaseUrl}/api/guilds/${guildId}/notifications/check`, {
           method: "POST",
           headers: getAuthHeaders(),
-        }});
+        });
         const body = await response.json();
-        if (!response.ok) throw new Error(body.error || `HTTP ${{response.status}}`);
-        statusText.textContent = `Notification-Check abgeschlossen. Geprueft: ${{body.processed ?? 0}}.`;
-        notificationStatusText.textContent = `Notification-Check abgeschlossen. Geprueft: ${{body.processed ?? 0}}.`;
-      }} catch (error) {{
-        setError(`Notification-Check fehlgeschlagen: ${{error.message}}`);
-        setNotificationError(`Notification-Check fehlgeschlagen: ${{error.message}}`);
+        if (!response.ok) throw new Error(body.error || `HTTP ${response.status}`);
+        statusText.textContent = `Notification-Check abgeschlossen. Geprueft: ${body.processed ?? 0}.`;
+        notificationStatusText.textContent = `Notification-Check abgeschlossen. Geprueft: ${body.processed ?? 0}.`;
+      } catch (error) {
+        setError(`Notification-Check fehlgeschlagen: ${error.message}`);
+        setNotificationError(`Notification-Check fehlgeschlagen: ${error.message}`);
         statusText.textContent = "Notification-Check fehlgeschlagen.";
         notificationStatusText.textContent = "Notification-Check fehlgeschlagen.";
-      }}
-    }}
+      }
+    }
 
-    async function loadLogs() {{
+    async function loadLogs() {
       const apiBaseUrl = normalizeBaseUrl(apiBaseUrlInput.value || DEFAULT_API_BASE_URL);
       const guildId = guildSelect.value;
       const limit = limitInput.value.trim() || "25";
       const eventType = eventTypeInput.value;
-      if (!apiBaseUrl) {{ setError("Bitte zuerst die API Base URL eintragen."); return; }}
-      if (!guildId) {{ setError("Bitte zuerst einen Discord Server auswaehlen."); return; }}
-      if (!sessionToken && !apiTokenInput.value.trim()) {{
+      if (!apiBaseUrl) { setError("Bitte zuerst die API Base URL eintragen."); return; }
+      if (!guildId) { setError("Bitte zuerst einen Discord Server auswaehlen."); return; }
+      if (!sessionToken && !apiTokenInput.value.trim()) {
         setError("Bitte per Discord einloggen oder den Fallback API Token eintragen.");
         return;
-      }}
+      }
       saveState();
       setError("");
       statusText.textContent = "Logs werden geladen...";
-      const params = new URLSearchParams({{ limit }});
+      const params = new URLSearchParams({ limit });
       if (eventType) params.set("event_type", eventType);
-      try {{
-        const response = await fetch(`${{apiBaseUrl}}/api/guilds/${{guildId}}/logs?${{params.toString()}}`, {{
+      try {
+        const response = await fetch(`${apiBaseUrl}/api/guilds/${guildId}/logs?${params.toString()}`, {
           headers: getAuthHeaders(),
-        }});
+        });
         const payload = await response.json();
-        if (!response.ok) throw new Error(payload.error || `HTTP ${{response.status}}`);
+        if (!response.ok) throw new Error(payload.error || `HTTP ${response.status}`);
         loadedStat.textContent = String(payload.items?.length ?? 0);
         renderEntries(payload.items || []);
-        statusText.textContent = `Erfolgreich geladen: ${{payload.items?.length ?? 0}} Log-Eintraege.`;
-      }} catch (error) {{
+        statusText.textContent = `Erfolgreich geladen: ${payload.items?.length ?? 0} Log-Eintraege.`;
+      } catch (error) {
         loadedStat.textContent = "0";
         entries.innerHTML = '<div class="empty">Keine Daten dargestellt.</div>';
-        setError(`Abruf fehlgeschlagen: ${{error.message}}`);
+        setError(`Abruf fehlgeschlagen: ${error.message}`);
         statusText.textContent = "Fehler beim Laden.";
-      }}
-    }}
+      }
+    }
 
-    async function saveTicketPanel() {{
+    async function saveTicketPanel() {
       const guildId = guildSelect.value;
       const apiBaseUrl = normalizeBaseUrl(apiBaseUrlInput.value || DEFAULT_API_BASE_URL);
       const wasEditing = Boolean(editingPanelId);
-      const payload = {{
+      const payload = {
         channel_id: ticketChannelSelect.value,
         category_id: ticketCategorySelect.value,
         support_role_id: ticketSupportRoleSelect.value,
         title: ticketTitleInput.value.trim(),
         description_text: ticketDescriptionInput.value.trim(),
         welcome_message: ticketWelcomeInput.value.trim(),
-      }};
+      };
 
-      if (!guildId) {{ setError("Bitte zuerst einen Discord Server auswaehlen."); return; }}
-      if (!payload.channel_id || !payload.title || !payload.description_text) {{
+      if (!guildId) { setError("Bitte zuerst einen Discord Server auswaehlen."); return; }
+      if (!payload.channel_id || !payload.title || !payload.description_text) {
         setError("Bitte Channel, Titel und Beschreibung fuellen.");
         return;
-      }}
+      }
 
       setError("");
       saveState();
       statusText.textContent = editingPanelId ? "Ticket-Panel wird gespeichert..." : "Ticket-Panel wird erstellt...";
-      try {{
+      try {
         const endpoint = editingPanelId
-          ? `${{apiBaseUrl}}/api/guilds/${{guildId}}/tickets/panels/${{editingPanelId}}`
-          : `${{apiBaseUrl}}/api/guilds/${{guildId}}/tickets/panels`;
+          ? `${apiBaseUrl}/api/guilds/${guildId}/tickets/panels/${editingPanelId}`
+          : `${apiBaseUrl}/api/guilds/${guildId}/tickets/panels`;
         const method = editingPanelId ? "PATCH" : "POST";
-        const response = await fetch(endpoint, {{
+        const response = await fetch(endpoint, {
           method,
-          headers: {{
+          headers: {
             ...getAuthHeaders(),
             "Content-Type": "application/json",
-          }},
+          },
           body: JSON.stringify(payload),
-        }});
+        });
         const body = await response.json();
-        if (!response.ok) throw new Error(body.error || `HTTP ${{response.status}}`);
+        if (!response.ok) throw new Error(body.error || `HTTP ${response.status}`);
         resetTicketForm();
         await loadOverview();
         statusText.textContent = wasEditing ? "Ticket-Panel gespeichert." : "Ticket-Panel erstellt.";
-      }} catch (error) {{
-        setError(`Ticket-Panel fehlgeschlagen: ${{error.message}}`);
+      } catch (error) {
+        setError(`Ticket-Panel fehlgeschlagen: ${error.message}`);
         statusText.textContent = "Ticket-Panel konnte nicht gespeichert werden.";
-      }}
-    }}
+      }
+    }
 
-    async function deleteTicketPanel(panelId) {{
+    async function deleteTicketPanel(panelId) {
       const guildId = guildSelect.value;
       const apiBaseUrl = normalizeBaseUrl(apiBaseUrlInput.value || DEFAULT_API_BASE_URL);
       if (!guildId || !panelId) return;
       setError("");
       statusText.textContent = "Ticket-Panel wird geloescht...";
-      try {{
-        const response = await fetch(`${{apiBaseUrl}}/api/guilds/${{guildId}}/tickets/panels/${{panelId}}`, {{
+      try {
+        const response = await fetch(`${apiBaseUrl}/api/guilds/${guildId}/tickets/panels/${panelId}`, {
           method: "DELETE",
           headers: getAuthHeaders(),
-        }});
+        });
         const body = await response.json();
-        if (!response.ok) throw new Error(body.error || `HTTP ${{response.status}}`);
+        if (!response.ok) throw new Error(body.error || `HTTP ${response.status}`);
         if (String(editingPanelId) === String(panelId)) resetTicketForm();
         await loadOverview();
         statusText.textContent = "Ticket-Panel geloescht.";
-      }} catch (error) {{
-        setError(`Loeschen fehlgeschlagen: ${{error.message}}`);
+      } catch (error) {
+        setError(`Loeschen fehlgeschlagen: ${error.message}`);
         statusText.textContent = "Ticket-Panel konnte nicht geloescht werden.";
-      }}
-    }}
+      }
+    }
 
-    async function runTicketAction(ticketId, action) {{
+    async function runTicketAction(ticketId, action) {
       const guildId = guildSelect.value;
       const apiBaseUrl = normalizeBaseUrl(apiBaseUrlInput.value || DEFAULT_API_BASE_URL);
       if (!guildId || !ticketId) return;
       setError("");
-      statusText.textContent = `Ticket-Aktion '${{action}}' wird ausgefuehrt...`;
-      try {{
-        const response = await fetch(`${{apiBaseUrl}}/api/guilds/${{guildId}}/tickets/${{ticketId}}/${{action}}`, {{
+      statusText.textContent = `Ticket-Aktion '${action}' wird ausgefuehrt...`;
+      try {
+        const response = await fetch(`${apiBaseUrl}/api/guilds/${guildId}/tickets/${ticketId}/${action}`, {
           method: "POST",
           headers: getAuthHeaders(),
-        }});
+        });
         const body = await response.json();
-        if (!response.ok) throw new Error(body.error || `HTTP ${{response.status}}`);
+        if (!response.ok) throw new Error(body.error || `HTTP ${response.status}`);
         await loadOverview();
-        statusText.textContent = `Ticket-Aktion '${{action}}' erfolgreich.`;
-      }} catch (error) {{
-        setError(`Ticket-Aktion fehlgeschlagen: ${{error.message}}`);
+        statusText.textContent = `Ticket-Aktion '${action}' erfolgreich.`;
+      } catch (error) {
+        setError(`Ticket-Aktion fehlgeschlagen: ${error.message}`);
         statusText.textContent = "Ticket-Aktion fehlgeschlagen.";
-      }}
-    }}
+      }
+    }
 
-    async function saveTicketNote(ticketId, noteText) {{
+    async function saveTicketNote(ticketId, noteText) {
       const guildId = guildSelect.value;
       const apiBaseUrl = normalizeBaseUrl(apiBaseUrlInput.value || DEFAULT_API_BASE_URL);
       if (!guildId || !ticketId) return;
-      if (!noteText.trim()) {{
+      if (!noteText.trim()) {
         setError("Bitte zuerst einen Notiz-Text eintragen.");
         return;
-      }}
+      }
       setError("");
       statusText.textContent = "Team-Notiz wird gespeichert...";
-      try {{
-        const response = await fetch(`${{apiBaseUrl}}/api/guilds/${{guildId}}/tickets/${{ticketId}}/note`, {{
+      try {
+        const response = await fetch(`${apiBaseUrl}/api/guilds/${guildId}/tickets/${ticketId}/note`, {
           method: "POST",
-          headers: {{
+          headers: {
             ...getAuthHeaders(),
             "Content-Type": "application/json",
-          }},
-          body: JSON.stringify({{ note_text: noteText.trim() }}),
-        }});
+          },
+          body: JSON.stringify({ note_text: noteText.trim() }),
+        });
         const body = await response.json();
-        if (!response.ok) throw new Error(body.error || `HTTP ${{response.status}}`);
+        if (!response.ok) throw new Error(body.error || `HTTP ${response.status}`);
         await loadOverview();
         statusText.textContent = "Team-Notiz gespeichert.";
-      }} catch (error) {{
-        setError(`Notiz fehlgeschlagen: ${{error.message}}`);
+      } catch (error) {
+        setError(`Notiz fehlgeschlagen: ${error.message}`);
         statusText.textContent = "Notiz konnte nicht gespeichert werden.";
-      }}
-    }}
+      }
+    }
 
-    for (const button of panelViewButtons) {{
-      button.addEventListener("click", () => {{
+    for (const button of panelViewButtons) {
+      button.addEventListener("click", () => {
         setActivePanelView(button.getAttribute("data-nav-view"));
         saveState();
-      }});
-    }}
+      });
+    }
 
-    document.getElementById("loadButton").addEventListener("click", () => {{
+    document.getElementById("loadButton").addEventListener("click", () => {
       setActivePanelView("logs");
       saveState();
       loadLogs();
-    }});
+    });
     document.getElementById("saveButton").addEventListener("click", saveState);
     document.getElementById("reloadOverviewButton").addEventListener("click", loadOverview);
     document.getElementById("saveTicketPanelButton").addEventListener("click", saveTicketPanel);
@@ -1685,11 +1678,11 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
     deleteVerificationButton.addEventListener("click", deleteVerification);
     verificationCaptchaSelect.addEventListener("change", updateVerificationCaptchaState);
     document.getElementById("checkNotificationsButton").addEventListener("click", checkNotificationsNow);
-    document.getElementById("discordLoginButton").addEventListener("click", () => {{
+    document.getElementById("discordLoginButton").addEventListener("click", () => {
       const apiBaseUrl = normalizeBaseUrl(apiBaseUrlInput.value || DEFAULT_API_BASE_URL);
-      window.location.href = `${{apiBaseUrl}}/api/oauth/discord/login`;
-    }});
-    function logoutPanelSession() {{
+      window.location.href = `${apiBaseUrl}/api/oauth/discord/login`;
+    });
+    function logoutPanelSession() {
       sessionToken = "";
       preferredGuildId = "";
       currentOverview = null;
@@ -1713,8 +1706,8 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
       statusText.textContent = "Discord-Session lokal entfernt.";
       saveState();
       updateGateState();
-    }}
-    changeGuildButton.addEventListener("click", () => {{
+    }
+    changeGuildButton.addEventListener("click", () => {
       guildSelect.value = "";
       preferredGuildId = "";
       currentOverview = null;
@@ -1734,34 +1727,34 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
       saveState();
       updateGateState();
       statusText.textContent = "Bitte waehle einen anderen Server aus.";
-    }});
+    });
     headerLogoutButton.addEventListener("click", logoutPanelSession);
-    selectGuildButton.addEventListener("click", () => {{
+    selectGuildButton.addEventListener("click", () => {
       preferredGuildId = guildSelect.value;
       saveState();
       updateGateState();
       loadOverview();
-    }});
-    guildSelect.addEventListener("change", () => {{
+    });
+    guildSelect.addEventListener("change", () => {
       preferredGuildId = guildSelect.value;
       selectedGuildIdText.textContent = guildSelect.value || "-";
       const guild = currentSession?.guilds?.find((entry) => String(entry.id) === String(guildSelect.value));
       selectedGuildNameText.textContent = guild?.name || "Noch kein Server ausgewaehlt.";
       saveState();
       updateGateState();
-    }});
+    });
 
-    function hideSiteNotice() {{
+    function hideSiteNotice() {
       siteNoticeOverlay.classList.add("hidden");
       document.body.classList.remove("notice-open");
       localStorage.setItem(SITE_NOTICE_KEY, "dismissed");
-    }}
+    }
 
-    if (localStorage.getItem(SITE_NOTICE_KEY) === "dismissed") {{
+    if (localStorage.getItem(SITE_NOTICE_KEY) === "dismissed") {
       siteNoticeOverlay.classList.add("hidden");
-    }} else {{
+    } else {
       document.body.classList.add("notice-open");
-    }}
+    }
 
     siteNoticeConfirm.addEventListener("click", hideSiteNotice);
     siteNoticeClose.addEventListener("click", hideSiteNotice);
@@ -1769,10 +1762,9 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
     loadSavedState();
     setActivePanelView(currentPanelView);
     readHashState();
-    fetchPanelSession().then(() => {{
+    fetchPanelSession().then(() => {
       if (guildSelect.value) loadOverview();
-    }});
+    });
   </script>
 </body>
 </html>
-"""
