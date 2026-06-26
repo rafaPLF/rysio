@@ -289,6 +289,7 @@
             <button class="nav-button" type="button" data-nav-view="verification"><span>Verification</span><span>Access</span></button>
             <button class="nav-button" type="button" data-nav-view="tickets"><span>Tickets</span><span>Support</span></button>
             <button class="nav-button" type="button" data-nav-view="logs"><span>Logs</span><span>Audit</span></button>
+            <button class="nav-button hidden" type="button" data-nav-view="admin" id="adminNavButton"><span>Admin</span><span>Owner</span></button>
             <button class="nav-button" type="button" data-nav-view="connection"><span>Verbindung</span><span>API</span></button>
           </div>
         </section>
@@ -538,6 +539,29 @@
           <p id="errorText" class="error" hidden style="margin-top:8px;"></p>
           <section id="entries" class="entry-list" style="margin-top:16px;"><div class="empty">Noch keine Daten geladen.</div></section>
         </section>
+        <section class="card panel-view hidden" data-panel-view="admin">
+          <div class="panel-head">
+            <div>
+              <h2 class="panel-view-title">Admin</h2>
+              <p class="muted">Owner-Uebersicht fuer alle Bot-Server mit Owner-Info und direkter Premium-Umschaltung.</p>
+            </div>
+            <span class="panel-tag">Owner Only</span>
+          </div>
+          <div class="ticket-grid">
+            <section class="card">
+              <h3>Aktueller Server</h3>
+              <div id="adminCurrentGuildCard" class="panel-list">
+                <div class="empty">Waehle oder lade zuerst einen Server.</div>
+              </div>
+            </section>
+            <section class="card">
+              <h3>Alle Bot-Server</h3>
+              <div id="adminGuildList" class="panel-list">
+                <div class="empty">Admin-Daten wurden noch nicht geladen.</div>
+              </div>
+            </section>
+          </div>
+        </section>
         <section class="card panel-view hidden" data-panel-view="connection">
           <div class="panel-head">
             <div>
@@ -621,6 +645,7 @@
     const headerGuildMeta = document.getElementById("headerGuildMeta");
     const changeGuildButton = document.getElementById("changeGuildButton");
     const headerLogoutButton = document.getElementById("headerLogoutButton");
+    const adminNavButton = document.getElementById("adminNavButton");
     const siteNoticeOverlay = document.getElementById("siteNoticeOverlay");
     const siteNoticeConfirm = document.getElementById("siteNoticeConfirm");
     const siteNoticeClose = document.getElementById("siteNoticeClose");
@@ -659,6 +684,8 @@
     const deleteVerificationButton = document.getElementById("deleteVerificationButton");
     const verificationStatusText = document.getElementById("verificationStatusText");
     const verificationErrorText = document.getElementById("verificationErrorText");
+    const adminCurrentGuildCard = document.getElementById("adminCurrentGuildCard");
+    const adminGuildList = document.getElementById("adminGuildList");
 
     let sessionToken = "";
     let preferredGuildId = "";
@@ -667,6 +694,8 @@
     let currentPanelView = "overview";
     let editingPanelId = null;
     let editingNotificationId = null;
+    let ownerPanelEnabled = false;
+    let adminGuilds = [];
 
     function escapeHtml(value) {
       return String(value).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#39;");
@@ -717,6 +746,17 @@
       setAvatarImage(headerGuildAvatar, getGuildIconUrl(guild), `${guild.name} Icon`);
     }
 
+    function getPremiumLabel(plan) {
+      return plan === "premium" ? "Premium" : "Free";
+    }
+
+    function syncOwnerNavigation() {
+      adminNavButton.classList.toggle("hidden", !ownerPanelEnabled);
+      if (!ownerPanelEnabled && currentPanelView === "admin") {
+        setActivePanelView("overview");
+      }
+    }
+
     function setActivePanelView(view) {
       currentPanelView = view || "overview";
       for (const button of panelViewButtons) {
@@ -731,6 +771,9 @@
         } else {
           loadVerificationSettings();
         }
+      }
+      if (currentPanelView === "admin" && ownerPanelEnabled) {
+        loadAdminGuilds();
       }
     }
 
@@ -953,6 +996,9 @@
     function renderSession(session) {
       currentSession = session;
       if (!session) {
+        ownerPanelEnabled = false;
+        adminGuilds = [];
+        syncOwnerNavigation();
         sessionUserText.textContent = "Noch nicht eingeloggt.";
         sessionGuildCountText.textContent = "0 verwaltbare Server von Discord geladen.";
         headerUserName.textContent = "Nicht eingeloggt";
@@ -962,6 +1008,8 @@
         updateGateState();
         return;
       }
+      ownerPanelEnabled = Boolean(session.is_owner);
+      syncOwnerNavigation();
       const username = session.user?.global_name || session.user?.username || "Discord User";
       sessionUserText.textContent = `Eingeloggt als ${username}.`;
       sessionGuildCountText.textContent = `${session.guilds.length} verwaltbare Server von Discord geladen.`;
@@ -970,6 +1018,88 @@
       setAvatarImage(headerUserAvatar, getDiscordAvatarUrl(session.user), `${username} Avatar`);
       populateGuildSelect(session.guilds);
       updateGateState();
+      if (ownerPanelEnabled) {
+        loadAdminGuilds();
+      }
+    }
+
+    function renderAdminCurrentGuild() {
+      if (!ownerPanelEnabled) {
+        adminCurrentGuildCard.innerHTML = '<div class="empty">Nur fuer den Bot-Owner sichtbar.</div>';
+        return;
+      }
+      const guildId = guildSelect.value || preferredGuildId || "";
+      if (!guildId) {
+        adminCurrentGuildCard.innerHTML = '<div class="empty">Waehle zuerst einen Server im Header aus.</div>';
+        return;
+      }
+      const guild = adminGuilds.find((entry) => String(entry.id) === String(guildId));
+      if (!guild) {
+        adminCurrentGuildCard.innerHTML = '<div class="empty">Fuer diesen Server wurden noch keine Admin-Daten geladen.</div>';
+        return;
+      }
+      adminCurrentGuildCard.innerHTML = `
+        <article class="panel-card">
+          <div class="panel-head">
+            <strong>${escapeHtml(guild.name)}</strong>
+            <span class="panel-tag">${escapeHtml(getPremiumLabel(guild.plan))}</span>
+          </div>
+          <div class="panel-meta">
+            <div>Owner: <strong>${escapeHtml(guild.owner_name)}</strong></div>
+            <div>Owner ID: <code>${escapeHtml(guild.owner_id)}</code></div>
+            <div>Members: <strong>${escapeHtml(guild.member_count ?? "-")}</strong></div>
+          </div>
+          <div class="button-row" style="margin-top:14px;">
+            <button type="button" data-admin-plan="premium" data-admin-guild-id="${escapeHtml(guild.id)}">Premium geben</button>
+            <button type="button" class="ghost" data-admin-plan="free" data-admin-guild-id="${escapeHtml(guild.id)}">Auf Free setzen</button>
+          </div>
+        </article>
+      `;
+      for (const button of adminCurrentGuildCard.querySelectorAll("[data-admin-plan]")) {
+        button.addEventListener("click", async () => {
+          await updateAdminGuildPlan(
+            button.getAttribute("data-admin-guild-id"),
+            button.getAttribute("data-admin-plan"),
+          );
+        });
+      }
+    }
+
+    function renderAdminGuilds(guilds) {
+      adminGuilds = guilds || [];
+      renderAdminCurrentGuild();
+      if (!adminGuilds.length) {
+        adminGuildList.innerHTML = '<div class="empty">Noch keine Bot-Server fuer den Adminbereich gefunden.</div>';
+        return;
+      }
+      adminGuildList.innerHTML = adminGuilds.map((guild) => `
+        <article class="panel-card">
+          <div class="panel-head">
+            <div>
+              <strong>${escapeHtml(guild.name)}</strong>
+              <p class="muted small">Owner: ${escapeHtml(guild.owner_name)} | ${escapeHtml(guild.member_count ?? "-")} Member</p>
+            </div>
+            <span class="panel-tag">${escapeHtml(getPremiumLabel(guild.plan))}</span>
+          </div>
+          <div class="panel-meta">
+            <div>Guild ID: <code>${escapeHtml(guild.id)}</code></div>
+            <div>Owner ID: <code>${escapeHtml(guild.owner_id)}</code></div>
+          </div>
+          <div class="button-row" style="margin-top:14px;">
+            <button type="button" data-admin-plan="premium" data-admin-guild-id="${escapeHtml(guild.id)}">Premium</button>
+            <button type="button" class="ghost" data-admin-plan="free" data-admin-guild-id="${escapeHtml(guild.id)}">Free</button>
+          </div>
+        </article>
+      `).join("");
+
+      for (const button of adminGuildList.querySelectorAll("[data-admin-plan]")) {
+        button.addEventListener("click", async () => {
+          await updateAdminGuildPlan(
+            button.getAttribute("data-admin-guild-id"),
+            button.getAttribute("data-admin-plan"),
+          );
+        });
+      }
     }
 
     function renderNotifications(subscriptions) {
@@ -1185,6 +1315,7 @@
       renderVerification(overview.verification || null);
       renderTicketPanels(overview.ticket_panels || []);
       renderActiveTickets(overview.active_tickets || []);
+      renderAdminCurrentGuild();
       resetVerificationForm();
     }
 
@@ -1210,6 +1341,46 @@
       } catch (error) {
         setVerificationError(`Verification-Laden fehlgeschlagen: ${error.message}`);
         verificationCurrentCard.innerHTML = '<div class="empty">Verification konnte nicht geladen werden.</div>';
+      }
+    }
+
+    async function loadAdminGuilds() {
+      if (!ownerPanelEnabled) return;
+      const apiBaseUrl = normalizeBaseUrl(apiBaseUrlInput.value || DEFAULT_API_BASE_URL);
+      try {
+        const response = await fetch(`${apiBaseUrl}/api/admin/guilds`, {
+          headers: getAuthHeaders(),
+        });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || `HTTP ${response.status}`);
+        renderAdminGuilds(payload.guilds || []);
+      } catch (error) {
+        adminCurrentGuildCard.innerHTML = '<div class="empty">Admin-Uebersicht konnte nicht geladen werden.</div>';
+        adminGuildList.innerHTML = `<div class="empty">Admin-Fehler: ${escapeHtml(error.message)}</div>`;
+      }
+    }
+
+    async function updateAdminGuildPlan(guildId, plan) {
+      if (!ownerPanelEnabled || !guildId || !plan) return;
+      const apiBaseUrl = normalizeBaseUrl(apiBaseUrlInput.value || DEFAULT_API_BASE_URL);
+      setError("");
+      statusText.textContent = `Premium-Status fuer Server ${guildId} wird aktualisiert...`;
+      try {
+        const response = await fetch(`${apiBaseUrl}/api/admin/guilds/${guildId}/premium`, {
+          method: "PUT",
+          headers: {
+            ...getAuthHeaders(),
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ plan }),
+        });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || `HTTP ${response.status}`);
+        statusText.textContent = `${payload.guild.name} ist jetzt auf ${getPremiumLabel(payload.guild.plan)} gesetzt.`;
+        await loadAdminGuilds();
+      } catch (error) {
+        setError(`Premium-Update fehlgeschlagen: ${error.message}`);
+        statusText.textContent = "Premium-Update fehlgeschlagen.";
       }
     }
 
@@ -1688,6 +1859,9 @@
       currentOverview = null;
       currentSession = null;
       currentPanelView = "overview";
+      ownerPanelEnabled = false;
+      adminGuilds = [];
+      syncOwnerNavigation();
       renderSession(null);
       guildSelect.value = "";
       selectedGuildIdText.textContent = "-";
@@ -1696,6 +1870,8 @@
       verificationCurrentCard.innerHTML = '<div class="empty">Discord-Session getrennt.</div>';
       ticketPanelsList.innerHTML = '<div class="empty">Discord-Session getrennt.</div>';
       activeTicketsList.innerHTML = '<div class="empty">Discord-Session getrennt.</div>';
+      adminCurrentGuildCard.innerHTML = '<div class="empty">Discord-Session getrennt.</div>';
+      adminGuildList.innerHTML = '<div class="empty">Discord-Session getrennt.</div>';
       notificationCountStat.textContent = "0";
       ticketPanelCountStat.textContent = "0";
       activeTicketCountStat.textContent = "0";
@@ -1718,6 +1894,7 @@
       verificationCurrentCard.innerHTML = '<div class="empty">Waehle zuerst einen Server aus.</div>';
       ticketPanelsList.innerHTML = '<div class="empty">Waehle zuerst einen Server aus.</div>';
       activeTicketsList.innerHTML = '<div class="empty">Waehle zuerst einen Server aus.</div>';
+      renderAdminCurrentGuild();
       notificationCountStat.textContent = "0";
       ticketPanelCountStat.textContent = "0";
       activeTicketCountStat.textContent = "0";
@@ -1740,6 +1917,7 @@
       selectedGuildIdText.textContent = guildSelect.value || "-";
       const guild = currentSession?.guilds?.find((entry) => String(entry.id) === String(guildSelect.value));
       selectedGuildNameText.textContent = guild?.name || "Noch kein Server ausgewaehlt.";
+      renderAdminCurrentGuild();
       saveState();
       updateGateState();
     });

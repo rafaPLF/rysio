@@ -9,6 +9,7 @@ from aiohttp import web
 from bot.database.repositories.audit_log_repo import AuditLogRepository
 from bot.database.repositories.guild_repo import GuildRepository
 from bot.database.repositories.notification_repo import NotificationSubscriptionRepository
+from bot.database.repositories.premium_repo import PremiumRepository
 from bot.database.repositories.ticket_note_repo import TicketNoteRepository
 from bot.database.repositories.ticket_repo import TicketRepository
 from bot.database.repositories.verification_repo import VerificationRepository
@@ -182,6 +183,19 @@ def _serialize_verification_settings(settings, guild: discord.Guild, *, enabled:
     }
 
 
+def _serialize_admin_guild(guild: discord.Guild, *, owner_name: str, plan: str) -> dict[str, Any]:
+    return {
+        "id": str(guild.id),
+        "name": guild.name,
+        "icon": str(guild.icon.url) if guild.icon else None,
+        "member_count": guild.member_count,
+        "owner_id": str(guild.owner_id),
+        "owner_name": owner_name,
+        "plan": plan,
+        "premium_active": plan != "free",
+    }
+
+
 def _build_ticket_panel_embed(bot: discord.Client, *, language: str, title: str, description_text: str) -> discord.Embed:
     embed = discord.Embed(title=title, description=description_text, color=discord.Color.blurple())
     embed.add_field(
@@ -320,6 +334,13 @@ async def _session_can_use_ticket_staff(request: web.Request, guild: discord.Gui
 
 def _forbidden(message: str, *, status: int = 403) -> web.Response:
     return web.json_response({"error": message}, status=status)
+
+
+def _session_is_owner(request: web.Request) -> bool:
+    user_id = _session_user_id(request)
+    if user_id is None:
+        return False
+    return has_owner_access(user_id)
 
 
 @web.middleware
@@ -1251,6 +1272,65 @@ async def get_panel_session(request: web.Request) -> web.Response:
             "user": session["user"],
             "guilds": session["guilds"],
             "expires_at": session["expires_at"],
+            "is_owner": has_owner_access(int(session["user"]["id"])),
+        }
+    )
+
+
+async def get_admin_guilds(request: web.Request) -> web.Response:
+    if not _session_is_owner(request):
+        return _forbidden("owner_required")
+
+    bot = request.app["bot"]
+    if bot is None:
+        return web.json_response({"error": "bot_unavailable"}, status=503)
+
+    database: DatabaseSessionManager = request.app["database"]
+    guild_payload: list[dict[str, Any]] = []
+    async with database.session() as session:
+        premium_repo = PremiumRepository(session)
+        for guild in sorted(bot.guilds, key=lambda entry: entry.name.lower()):
+            owner_member = guild.get_member(guild.owner_id)
+            owner_name = owner_member.display_name if owner_member is not None else f"User {guild.owner_id}"
+            plan = await premium_repo.get_active_plan(guild.id)
+            guild_payload.append(_serialize_admin_guild(guild, owner_name=owner_name, plan=plan))
+
+    return web.json_response({"guilds": guild_payload})
+
+
+async def update_admin_guild_premium(request: web.Request) -> web.Response:
+    if not _session_is_owner(request):
+        return _forbidden("owner_required")
+
+    bot = request.app["bot"]
+    if bot is None:
+        return web.json_response({"error": "bot_unavailable"}, status=503)
+
+    guild = bot.get_guild(int(request.match_info["guild_id"]))
+    if guild is None:
+        return web.json_response({"error": "guild_not_found"}, status=404)
+
+    try:
+        payload = await request.json()
+    except json.JSONDecodeError:
+        return web.json_response({"error": "invalid_json"}, status=400)
+
+    plan = str(payload.get("plan", "")).strip().lower()
+    if plan not in {"free", "premium"}:
+        return web.json_response({"error": "invalid_plan"}, status=400)
+
+    database: DatabaseSessionManager = request.app["database"]
+    async with database.session() as session:
+        premium_repo = PremiumRepository(session)
+        await premium_repo.set_plan(guild.id, plan, active=(plan != "free"))
+        current_plan = await premium_repo.get_active_plan(guild.id)
+
+    owner_member = guild.get_member(guild.owner_id)
+    owner_name = owner_member.display_name if owner_member is not None else f"User {guild.owner_id}"
+    return web.json_response(
+        {
+            "updated": True,
+            "guild": _serialize_admin_guild(guild, owner_name=owner_name, plan=current_plan),
         }
     )
 
@@ -1293,6 +1373,8 @@ def create_web_app(database: DatabaseSessionManager, api_token: str, allowed_ori
     app.router.add_get("/api/oauth/discord/login", discord_login)
     app.router.add_get("/api/oauth/discord/callback", discord_callback)
     app.router.add_get("/api/panel/session", get_panel_session)
+    app.router.add_get("/api/admin/guilds", get_admin_guilds)
+    app.router.add_put("/api/admin/guilds/{guild_id:\\d+}/premium", update_admin_guild_premium)
     app.router.add_get("/api/guilds/{guild_id:\\d+}/logs", get_guild_logs)
     app.router.add_get("/api/guilds/{guild_id:\\d+}/overview", get_guild_overview)
     app.router.add_get("/api/guilds/{guild_id:\\d+}/verification", get_guild_verification)

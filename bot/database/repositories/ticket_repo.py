@@ -105,14 +105,18 @@ class TicketRepository:
         result = await self.session.execute(query)
         return list(result.scalars().all())
 
-    async def get_open_ticket_for_user(self, guild_id: int, user_id: int) -> Ticket | None:
+    async def get_open_tickets_for_user(self, guild_id: int, user_id: int) -> list[Ticket]:
         query = select(Ticket).where(
             Ticket.guild_id == guild_id,
             Ticket.user_id == user_id,
             Ticket.status.in_(["open", "claimed", "waiting_user"]),
         )
         result = await self.session.execute(query)
-        return result.scalar_one_or_none()
+        return list(result.scalars().all())
+
+    async def count_open_tickets_for_user(self, guild_id: int, user_id: int) -> int:
+        tickets = await self.get_open_tickets_for_user(guild_id, user_id)
+        return len(tickets)
 
     async def create_ticket(self, guild_id: int, channel_id: int, user_id: int, panel_id: int | None = None) -> Ticket:
         ticket = Ticket(guild_id=guild_id, channel_id=channel_id, user_id=user_id, panel_id=panel_id, status="open")

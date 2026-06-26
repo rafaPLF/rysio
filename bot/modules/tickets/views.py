@@ -1,8 +1,20 @@
 from __future__ import annotations
 
+import re
+import unicodedata
+
 import discord
 
 from bot.utils.access import can_manage_guild, can_use_moderation
+
+
+MAX_OPEN_TICKETS_PER_USER = 3
+
+
+def _slugify_ticket_username(name: str) -> str:
+    normalized = unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode("ascii")
+    collapsed = re.sub(r"[^a-zA-Z0-9]+", "-", normalized.lower()).strip("-")
+    return collapsed or "user"
 
 
 class TicketCreateView(discord.ui.View):
@@ -20,7 +32,7 @@ class TicketCreateView(discord.ui.View):
         async with interaction.client.database.session() as session:  # type: ignore[attr-defined]
             repo = TicketRepository(session)
             panel = await repo.get_panel_by_message(interaction.message.id)
-            existing_ticket = await repo.get_open_ticket_for_user(interaction.guild.id, interaction.user.id)
+            open_ticket_count = await repo.count_open_tickets_for_user(interaction.guild.id, interaction.user.id)
 
         language = await interaction.client.guild_config.get_language(  # type: ignore[attr-defined]
             interaction.client.database,
@@ -32,8 +44,12 @@ class TicketCreateView(discord.ui.View):
             await interaction.response.send_message(message, ephemeral=True)
             return
 
-        if existing_ticket is not None:
-            message = interaction.client.localization.translate("tickets.already_open", language=language)  # type: ignore[attr-defined]
+        if open_ticket_count >= MAX_OPEN_TICKETS_PER_USER:
+            message = interaction.client.localization.translate(  # type: ignore[attr-defined]
+                "tickets.already_open",
+                language=language,
+                limit=MAX_OPEN_TICKETS_PER_USER,
+            )
             await interaction.response.send_message(message, ephemeral=True)
             return
 
@@ -65,7 +81,9 @@ class TicketCreateView(discord.ui.View):
                 read_message_history=True,
             )
 
-        channel_name = f"ticket-{interaction.user.name}".lower().replace(" ", "-")[:90]
+        ticket_number = open_ticket_count + 1
+        username_slug = _slugify_ticket_username(interaction.user.name)
+        channel_name = f"ticket-{username_slug}-{ticket_number}"[:90].rstrip("-")
         ticket_channel = await interaction.guild.create_text_channel(
             name=channel_name,
             category=category if isinstance(category, discord.CategoryChannel) else None,
