@@ -43,6 +43,7 @@ class RysioGroup(app_commands.Group):
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @app_commands.command(name="setup", description="Legt den Info-Channel fuer Rysio fest und postet die Uebersicht.")
+    @app_commands.default_permissions(manage_guild=True)
     @app_commands.describe(channel="Channel, in dem Rysio seine Infos und Hilfe posten soll")
     async def setup(self, interaction: discord.Interaction, channel: discord.TextChannel) -> None:
         if interaction.guild is None:
@@ -89,30 +90,15 @@ class RysioGroup(app_commands.Group):
         )
         await interaction.response.send_message(response, ephemeral=True)
 
-    @app_commands.command(name="commands", description="Postet die aktuelle Command-Uebersicht erneut.")
-    async def commands(self, interaction: discord.Interaction) -> None:
-        if interaction.guild is None:
-            await interaction.response.send_message("Das geht nur in einem Server.", ephemeral=True)
+    @app_commands.command(name="welcome", description="Temporär: Postet die Welcome-Nachricht zum Testen erneut.")
+    @app_commands.default_permissions(manage_guild=True)
+    async def welcome(self, interaction: discord.Interaction) -> None:
+        if interaction.guild is None or not isinstance(interaction.channel, discord.TextChannel):
+            await interaction.response.send_message("Das geht nur in einem Server-Textchannel.", ephemeral=True)
             return
 
-        settings = await interaction.client.guild_config.get_settings(  # type: ignore[attr-defined]
-            interaction.client.database,
-            interaction.guild.id,
-        )
-        language = await interaction.client.guild_config.get_language(  # type: ignore[attr-defined]
-            interaction.client.database,
-            interaction.guild.id,
-        )
-
-        if settings is None or settings.info_channel_id is None:
-            message = interaction.client.localization.translate("rysio.no_info_channel", language=language)  # type: ignore[attr-defined]
-            await interaction.response.send_message(message, ephemeral=True)
-            return
-
-        channel = interaction.guild.get_channel(settings.info_channel_id)
-        if not isinstance(channel, discord.TextChannel):
-            message = interaction.client.localization.translate("rysio.info_channel_missing", language=language)  # type: ignore[attr-defined]
-            await interaction.response.send_message(message, ephemeral=True)
+        if not can_manage_guild(interaction.client, interaction.user):
+            await interaction.response.send_message("Dafuer brauchst du Server-verwalten-Rechte.", ephemeral=True)
             return
 
         bot_member = interaction.guild.me or interaction.guild.get_member(interaction.client.user.id)  # type: ignore[attr-defined]
@@ -120,19 +106,19 @@ class RysioGroup(app_commands.Group):
             await interaction.response.send_message("Bot-Mitglied konnte nicht gefunden werden.", ephemeral=True)
             return
 
-        channel_permissions = channel.permissions_for(bot_member)
+        channel_permissions = interaction.channel.permissions_for(bot_member)
         if not (channel_permissions.view_channel and channel_permissions.send_messages and channel_permissions.embed_links):
-            message = interaction.client.localization.translate("rysio.info_channel_not_writable", language=language)  # type: ignore[attr-defined]
-            await interaction.response.send_message(message, ephemeral=True)
+            await interaction.response.send_message(
+                "Rysio braucht in diesem Channel `Kanal ansehen`, `Nachrichten senden` und `Links einbetten`.",
+                ephemeral=True,
+            )
             return
 
-        await SetupMessageService().send_welcome_message(interaction.client, interaction.guild, channel)
-        response = interaction.client.localization.translate(  # type: ignore[attr-defined]
-            "rysio.commands_posted",
-            language=language,
-            channel=channel.mention,
+        await SetupMessageService().send_welcome_message(interaction.client, interaction.guild, interaction.channel)
+        await interaction.response.send_message(
+            f"Welcome-Nachricht wurde zum Testen erneut in {interaction.channel.mention} gepostet.",
+            ephemeral=True,
         )
-        await interaction.response.send_message(response, ephemeral=True)
 
     @app_commands.command(name="owner", description="Postet ein Owner-Control-Panel in einen ausgewaehlten Channel.")
     @app_commands.describe(channel="Channel fuer das Owner-Control-Panel")
@@ -185,10 +171,8 @@ def build_help_embed(bot: commands.Bot, language: str) -> discord.Embed:
         value=(
             "`/rysio help`\n"
             "`/rysio setup`\n"
-            "`/rysio commands`\n"
             "`/rysio status`\n"
-            "`/rysio owner`\n"
-            "`/help`"
+            "`/rysio owner`"
         ),
         inline=False,
     )
@@ -489,16 +473,6 @@ class HelpCog(commands.Cog):
         self.bot.tree.add_command(RysioGroup())
         self.bot.add_view(RysioInfoView())
         self.bot.add_view(RysioOwnerView())
-
-    @app_commands.command(name="help", description="Zeigt eine Uebersicht aller wichtigen Rysio-Commands.")
-    async def help_command(self, interaction: discord.Interaction) -> None:
-        if interaction.guild is None:
-            await interaction.response.send_message("Das geht nur in einem Server.", ephemeral=True)
-            return
-
-        language = await self.bot.guild_config.get_language(self.bot.database, interaction.guild.id)  # type: ignore[attr-defined]
-        embed = build_help_embed(self.bot, language)
-        await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
 async def setup(bot: commands.Bot) -> None:
