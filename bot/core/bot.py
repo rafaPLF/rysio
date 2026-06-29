@@ -72,6 +72,7 @@ class DCBot(commands.Bot):
         logger.info("Global application commands synced")
 
     async def on_ready(self) -> None:
+        await self.change_presence(activity=discord.Game(name="rysio.app"))
         logger.info(self.localization.translate("bot.ready", user=str(self.user)))
         if not self._guild_commands_synced:
             self._guild_commands_synced = True
