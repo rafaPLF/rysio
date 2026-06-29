@@ -27,3 +27,6 @@ class GuildSettings(Base):
     mod_role_ids_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     verification_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     ticket_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    welcome_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    welcome_channel_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    welcome_style: Mapped[str] = mapped_column(String(32), default="neon_card")

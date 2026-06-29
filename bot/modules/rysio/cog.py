@@ -192,6 +192,11 @@ def build_help_embed(bot: commands.Bot, language: str) -> discord.Embed:
         inline=False,
     )
     embed.add_field(
+        name="Welcome",
+        value="`/welcome status`\n`/welcome setup`\n`/welcome preview`\n`/welcome disable`",
+        inline=False,
+    )
+    embed.add_field(
         name="Reaction Roles",
         value="`/reactionroles status`\n`/reactionroles create`\n`/reactionroles manage`\n`/reactionroles delete`",
         inline=False,

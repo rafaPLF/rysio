@@ -142,3 +142,19 @@ class GuildRepository:
         settings.mod_role_ids_json = mod_role_ids_json
         await self.session.flush()
         return settings
+
+    async def set_welcome(
+        self,
+        guild_id: int,
+        enabled: bool,
+        channel_id: int | None,
+        style: str,
+        default_language: str,
+    ) -> GuildSettings:
+        await self.ensure_guild(guild_id, default_language)
+        settings = await self.ensure_settings(guild_id)
+        settings.welcome_enabled = enabled
+        settings.welcome_channel_id = channel_id
+        settings.welcome_style = style
+        await self.session.flush()
+        return settings

@@ -17,6 +17,7 @@ from bot.database.session import DatabaseSessionManager
 from bot.modules.notifications.service import NotificationService
 from bot.modules.tickets.views import TicketCreateView
 from bot.modules.verification.views import VerificationView
+from bot.modules.welcome.service import send_welcome_message
 from bot.utils.access import has_owner_access
 from bot.web.oauth import (
     build_callback_redirect,
@@ -180,6 +181,16 @@ def _serialize_verification_settings(settings, guild: discord.Guild, *, enabled:
         "panel_title": settings.panel_title if settings else None,
         "panel_description": settings.panel_description if settings else None,
         "reaction_emoji": settings.reaction_emoji if settings else None,
+    }
+
+
+def _serialize_welcome_settings(settings, guild: discord.Guild) -> dict[str, Any]:
+    channel = guild.get_channel(settings.welcome_channel_id) if settings and settings.welcome_channel_id else None
+    return {
+        "enabled": bool(settings.welcome_enabled) if settings else False,
+        "welcome_channel_id": str(settings.welcome_channel_id) if settings and settings.welcome_channel_id else None,
+        "welcome_channel_name": channel.name if isinstance(channel, discord.TextChannel) else None,
+        "welcome_style": settings.welcome_style if settings and settings.welcome_style else "neon_card",
     }
 
 
@@ -431,6 +442,7 @@ async def get_guild_overview(request: web.Request) -> web.Response:
         return _forbidden("guild_access_denied")
 
     database: DatabaseSessionManager = request.app["database"]
+    bot = request.app["bot"]
     async with database.session() as session:
         guild_repo = GuildRepository(session)
         notification_repo = NotificationSubscriptionRepository(session)
@@ -475,10 +487,114 @@ async def get_guild_overview(request: web.Request) -> web.Response:
         ),
         "notifications": [_serialize_notification_subscription(subscription, guild) for subscription in notifications],
         "verification": _serialize_verification_settings(verification, guild, enabled=bool(settings.verification_enabled)),
+        "welcome": _serialize_welcome_settings(settings, guild),
+        "members_intent_enabled": bool(getattr(bot.settings, "enable_members_intent", False)),
         "ticket_panels": [_serialize_ticket_panel(panel, guild) for panel in panels],
         "active_tickets": serialized_tickets,
     }
     return web.json_response(payload)
+
+
+async def get_guild_welcome(request: web.Request) -> web.Response:
+    guild = await _get_authorized_guild(request)
+    if guild is None:
+        return _forbidden("guild_access_denied")
+
+    database: DatabaseSessionManager = request.app["database"]
+    bot = request.app["bot"]
+    async with database.session() as session:
+        guild_repo = GuildRepository(session)
+        settings = await guild_repo.ensure_settings(guild.id)
+
+    return web.json_response(
+        {
+            "welcome": _serialize_welcome_settings(settings, guild),
+            "members_intent_enabled": bool(getattr(bot.settings, "enable_members_intent", False)),
+        }
+    )
+
+
+async def save_welcome_settings(request: web.Request) -> web.Response:
+    guild = await _get_authorized_guild(request)
+    if guild is None:
+        return _forbidden("guild_access_denied")
+    if not await _session_can_manage_guild(request, guild):
+        return _forbidden("guild_manage_required")
+
+    try:
+        payload = await request.json()
+    except json.JSONDecodeError:
+        return web.json_response({"error": "invalid_json"}, status=400)
+
+    channel_id_raw = str(payload.get("welcome_channel_id", "")).strip()
+    style = str(payload.get("welcome_style", "neon_card")).strip() or "neon_card"
+    if style != "neon_card":
+        return web.json_response({"error": "unsupported_welcome_style"}, status=400)
+    if not channel_id_raw:
+        return web.json_response({"error": "missing_welcome_channel_id"}, status=400)
+
+    try:
+        channel_id = int(channel_id_raw)
+    except ValueError:
+        return web.json_response({"error": "invalid_welcome_channel_id"}, status=400)
+
+    channel = guild.get_channel(channel_id)
+    if not isinstance(channel, discord.TextChannel):
+        return web.json_response({"error": "welcome_channel_not_found"}, status=404)
+
+    bot = request.app["bot"]
+    bot_member = guild.me or guild.get_member(bot.user.id)
+    if bot_member is None:
+        return web.json_response({"error": "bot_member_missing"}, status=500)
+
+    permissions = channel.permissions_for(bot_member)
+    if not (permissions.view_channel and permissions.send_messages and permissions.embed_links and permissions.attach_files):
+        return web.json_response({"error": "missing_welcome_channel_permissions"}, status=400)
+
+    await bot.guild_config.set_welcome(bot.database, guild.id, True, channel.id, style)  # type: ignore[attr-defined]
+    settings = await bot.guild_config.get_settings(bot.database, guild.id)  # type: ignore[attr-defined]
+    return web.json_response({"updated": True, "welcome": _serialize_welcome_settings(settings, guild)})
+
+
+async def delete_welcome_settings(request: web.Request) -> web.Response:
+    guild = await _get_authorized_guild(request)
+    if guild is None:
+        return _forbidden("guild_access_denied")
+    if not await _session_can_manage_guild(request, guild):
+        return _forbidden("guild_manage_required")
+
+    bot = request.app["bot"]
+    await bot.guild_config.set_welcome(bot.database, guild.id, False, None, "neon_card")  # type: ignore[attr-defined]
+    settings = await bot.guild_config.get_settings(bot.database, guild.id)  # type: ignore[attr-defined]
+    return web.json_response({"deleted": True, "welcome": _serialize_welcome_settings(settings, guild)})
+
+
+async def preview_welcome_settings(request: web.Request) -> web.Response:
+    guild = await _get_authorized_guild(request)
+    if guild is None:
+        return _forbidden("guild_access_denied")
+    if not await _session_can_manage_guild(request, guild):
+        return _forbidden("guild_manage_required")
+
+    bot = request.app["bot"]
+    user_id = _session_user_id(request)
+    if user_id is None:
+        return web.json_response({"error": "missing_panel_user"}, status=401)
+
+    member = await _get_authorized_member(request, guild)
+    if member is None:
+        return web.json_response({"error": "member_not_found"}, status=404)
+
+    settings = await bot.guild_config.get_settings(bot.database, guild.id)  # type: ignore[attr-defined]
+    if settings is None or not settings.welcome_channel_id:
+        return web.json_response({"error": "welcome_not_configured"}, status=400)
+
+    channel = guild.get_channel(settings.welcome_channel_id)
+    if not isinstance(channel, discord.TextChannel):
+        return web.json_response({"error": "welcome_channel_not_found"}, status=404)
+
+    await send_welcome_message(bot, member, channel=channel, style=settings.welcome_style or "neon_card")
+    return web.json_response({"preview_sent": True, "channel_id": str(channel.id)})
 
 
 async def get_guild_verification(request: web.Request) -> web.Response:
@@ -1377,6 +1493,10 @@ def create_web_app(database: DatabaseSessionManager, api_token: str, allowed_ori
     app.router.add_put("/api/admin/guilds/{guild_id:\\d+}/premium", update_admin_guild_premium)
     app.router.add_get("/api/guilds/{guild_id:\\d+}/logs", get_guild_logs)
     app.router.add_get("/api/guilds/{guild_id:\\d+}/overview", get_guild_overview)
+    app.router.add_get("/api/guilds/{guild_id:\\d+}/welcome", get_guild_welcome)
+    app.router.add_put("/api/guilds/{guild_id:\\d+}/welcome", save_welcome_settings)
+    app.router.add_delete("/api/guilds/{guild_id:\\d+}/welcome", delete_welcome_settings)
+    app.router.add_post("/api/guilds/{guild_id:\\d+}/welcome/preview", preview_welcome_settings)
     app.router.add_get("/api/guilds/{guild_id:\\d+}/verification", get_guild_verification)
     app.router.add_put("/api/guilds/{guild_id:\\d+}/verification", save_verification_settings)
     app.router.add_delete("/api/guilds/{guild_id:\\d+}/verification", delete_verification_settings)

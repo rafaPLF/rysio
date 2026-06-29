@@ -287,6 +287,7 @@
             <button class="nav-button active" type="button" data-nav-view="overview"><span>Overview</span><span>Start</span></button>
             <button class="nav-button" type="button" data-nav-view="notifications"><span>Notifications</span><span>Live</span></button>
             <button class="nav-button" type="button" data-nav-view="verification"><span>Verification</span><span>Access</span></button>
+            <button class="nav-button" type="button" data-nav-view="welcome"><span>Welcome</span><span>Join</span></button>
             <button class="nav-button" type="button" data-nav-view="tickets"><span>Tickets</span><span>Support</span></button>
             <button class="nav-button" type="button" data-nav-view="logs"><span>Logs</span><span>Audit</span></button>
             <button class="nav-button hidden" type="button" data-nav-view="admin" id="adminNavButton"><span>Admin</span><span>Owner</span></button>
@@ -458,6 +459,47 @@
             <section class="card">
               <h3>Aktuelle Verification</h3>
               <div id="verificationCurrentCard" class="panel-list">
+                <div class="empty">Noch kein Server geladen.</div>
+              </div>
+            </section>
+          </div>
+        </section>
+        <section class="card panel-view hidden" data-panel-view="welcome">
+          <div class="panel-head">
+            <div>
+              <h2 class="panel-view-title">Welcome</h2>
+              <p class="muted">Lege fest, in welchem Channel neue Mitglieder begruesst werden. Fuer den Start gibt es ein erstes grafisches Neon-Card-Theme.</p>
+            </div>
+            <span class="panel-tag">Join Setup</span>
+          </div>
+          <div class="ticket-grid">
+            <section class="card">
+              <h3>Welcome einrichten</h3>
+              <div class="stack">
+                <div>
+                  <label for="welcomeChannelSelect">Welcome Channel</label>
+                  <select id="welcomeChannelSelect">
+                    <option value="">Channel auswaehlen</option>
+                  </select>
+                </div>
+                <div>
+                  <label for="welcomeStyleSelect">Welcome Grafik</label>
+                  <select id="welcomeStyleSelect">
+                    <option value="neon_card">Neon Card</option>
+                  </select>
+                </div>
+              </div>
+              <div class="button-row" style="margin-top:14px;">
+                <button id="saveWelcomeButton" type="button">Welcome speichern</button>
+                <button id="previewWelcomeButton" type="button" class="ghost">Preview senden</button>
+                <button id="deleteWelcomeButton" type="button" class="danger-button">Welcome loeschen</button>
+              </div>
+              <p id="welcomeStatusText" class="meta" style="margin-top:12px;">Bereit.</p>
+              <p id="welcomeErrorText" class="error" hidden style="margin-top:8px;"></p>
+            </section>
+            <section class="card">
+              <h3>Aktuelle Welcome-Config</h3>
+              <div id="welcomeCurrentCard" class="panel-list">
                 <div class="empty">Noch kein Server geladen.</div>
               </div>
             </section>
@@ -684,6 +726,14 @@
     const deleteVerificationButton = document.getElementById("deleteVerificationButton");
     const verificationStatusText = document.getElementById("verificationStatusText");
     const verificationErrorText = document.getElementById("verificationErrorText");
+    const welcomeChannelSelect = document.getElementById("welcomeChannelSelect");
+    const welcomeStyleSelect = document.getElementById("welcomeStyleSelect");
+    const welcomeCurrentCard = document.getElementById("welcomeCurrentCard");
+    const saveWelcomeButton = document.getElementById("saveWelcomeButton");
+    const previewWelcomeButton = document.getElementById("previewWelcomeButton");
+    const deleteWelcomeButton = document.getElementById("deleteWelcomeButton");
+    const welcomeStatusText = document.getElementById("welcomeStatusText");
+    const welcomeErrorText = document.getElementById("welcomeErrorText");
     const adminCurrentGuildCard = document.getElementById("adminCurrentGuildCard");
     const adminGuildList = document.getElementById("adminGuildList");
 
@@ -770,6 +820,13 @@
           loadOverview();
         } else {
           loadVerificationSettings();
+        }
+      }
+      if (currentPanelView === "welcome" && guildSelect.value) {
+        if (!currentOverview) {
+          loadOverview();
+        } else {
+          loadWelcomeSettings();
         }
       }
       if (currentPanelView === "admin" && ownerPanelEnabled) {
@@ -879,6 +936,16 @@
       verificationErrorText.textContent = message;
     }
 
+    function setWelcomeError(message) {
+      if (!message) {
+        welcomeErrorText.hidden = true;
+        welcomeErrorText.textContent = "";
+        return;
+      }
+      welcomeErrorText.hidden = false;
+      welcomeErrorText.textContent = message;
+    }
+
     function resetTicketForm() {
       editingPanelId = null;
       ticketFormHeading.textContent = "Neues Ticket-Panel erstellen";
@@ -914,6 +981,13 @@
       updateVerificationCaptchaState();
       verificationStatusText.textContent = "Bereit.";
       setVerificationError("");
+    }
+
+    function resetWelcomeForm() {
+      welcomeChannelSelect.value = currentOverview?.welcome?.welcome_channel_id || "";
+      welcomeStyleSelect.value = currentOverview?.welcome?.welcome_style || "neon_card";
+      welcomeStatusText.textContent = "Bereit.";
+      setWelcomeError("");
     }
 
     function updateVerificationCaptchaState() {
@@ -971,6 +1045,29 @@
             <div>Beschreibung: ${escapeHtml(verification.panel_description || "Rysio Standardbeschreibung aktiv.")}</div>
             <div>Emoji: <strong>${escapeHtml(verification.reaction_emoji || "-")}</strong></div>
             <div>Message ID: <code>${escapeHtml(verification.panel_message_id || "-")}</code></div>
+          </div>
+        </article>
+      `;
+    }
+
+    function renderWelcome(welcome, membersIntentEnabled = false) {
+      if (!welcome || !welcome.enabled || !welcome.welcome_channel_id) {
+        welcomeCurrentCard.innerHTML = `
+          <div class="empty">Welcome ist fuer diesen Server noch nicht eingerichtet.</div>
+          ${membersIntentEnabled ? "" : '<p class="meta" style="margin-top:10px;">Hinweis: Members-Intent ist aktuell aus. Ohne ihn erkennt Rysio keine neuen Joins.</p>'}
+        `;
+        return;
+      }
+      welcomeCurrentCard.innerHTML = `
+        <article class="panel-card">
+          <div class="panel-head">
+            <strong>Welcome aktiv</strong>
+            <span class="panel-tag">${membersIntentEnabled ? "Live" : "Intent fehlt"}</span>
+          </div>
+          <div class="panel-meta">
+            <div>Channel: <strong>#${escapeHtml(welcome.welcome_channel_name || "Unbekannt")}</strong></div>
+            <div>Style: <strong>${escapeHtml(welcome.welcome_style || "neon_card")}</strong></div>
+            <div>Join-Erkennung: <strong>${membersIntentEnabled ? "bereit" : "Members-Intent aus"}</strong></div>
           </div>
         </article>
       `;
@@ -1266,6 +1363,7 @@
       ticketChannelSelect.innerHTML = '<option value="">Channel auswaehlen</option>';
       notificationChannelSelect.innerHTML = '<option value="">Channel auswaehlen</option>';
       verificationChannelSelect.innerHTML = '<option value="">Channel auswaehlen</option>';
+      welcomeChannelSelect.innerHTML = '<option value="">Channel auswaehlen</option>';
       for (const channel of overview.channels || []) {
         const option = document.createElement("option");
         option.value = channel.id;
@@ -1281,6 +1379,11 @@
         verificationOption.value = channel.id;
         verificationOption.textContent = `#${channel.name}`;
         verificationChannelSelect.appendChild(verificationOption);
+
+        const welcomeOption = document.createElement("option");
+        welcomeOption.value = channel.id;
+        welcomeOption.textContent = `#${channel.name}`;
+        welcomeChannelSelect.appendChild(welcomeOption);
       }
 
       ticketCategorySelect.innerHTML = '<option value="">Keine Kategorie</option>';
@@ -1313,10 +1416,12 @@
 
       renderNotifications(overview.notifications || []);
       renderVerification(overview.verification || null);
+      renderWelcome(overview.welcome || null, Boolean(overview.members_intent_enabled));
       renderTicketPanels(overview.ticket_panels || []);
       renderActiveTickets(overview.active_tickets || []);
       renderAdminCurrentGuild();
       resetVerificationForm();
+      resetWelcomeForm();
     }
 
     async function loadVerificationSettings() {
@@ -1341,6 +1446,32 @@
       } catch (error) {
         setVerificationError(`Verification-Laden fehlgeschlagen: ${error.message}`);
         verificationCurrentCard.innerHTML = '<div class="empty">Verification konnte nicht geladen werden.</div>';
+      }
+    }
+
+    async function loadWelcomeSettings() {
+      const guildId = guildSelect.value;
+      const apiBaseUrl = normalizeBaseUrl(apiBaseUrlInput.value || DEFAULT_API_BASE_URL);
+      if (!guildId) {
+        welcomeCurrentCard.innerHTML = '<div class="empty">Waehle zuerst einen Server aus.</div>';
+        return;
+      }
+
+      try {
+        const response = await fetch(`${apiBaseUrl}/api/guilds/${guildId}/welcome`, {
+          headers: getAuthHeaders(),
+        });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || `HTTP ${response.status}`);
+        renderWelcome(payload.welcome || null, Boolean(payload.members_intent_enabled));
+        if (currentOverview) {
+          currentOverview.welcome = payload.welcome || null;
+          currentOverview.members_intent_enabled = Boolean(payload.members_intent_enabled);
+          resetWelcomeForm();
+        }
+      } catch (error) {
+        setWelcomeError(`Welcome-Laden fehlgeschlagen: ${error.message}`);
+        welcomeCurrentCard.innerHTML = '<div class="empty">Welcome konnte nicht geladen werden.</div>';
       }
     }
 
@@ -1430,6 +1561,7 @@
         selectedGuildNameText.textContent = "Noch kein Server ausgewaehlt.";
         notificationList.innerHTML = '<div class="empty">Waehle zuerst einen Server aus.</div>';
         verificationCurrentCard.innerHTML = '<div class="empty">Waehle zuerst einen Server aus.</div>';
+        welcomeCurrentCard.innerHTML = '<div class="empty">Waehle zuerst einen Server aus.</div>';
         ticketPanelsList.innerHTML = '<div class="empty">Waehle zuerst einen Server aus.</div>';
         activeTicketsList.innerHTML = '<div class="empty">Waehle zuerst einen Server aus.</div>';
         notificationCountStat.textContent = "0";
@@ -1438,6 +1570,7 @@
         resetTicketForm();
         resetNotificationForm();
         resetVerificationForm();
+        resetWelcomeForm();
         return;
       }
 
@@ -1454,11 +1587,13 @@
         resetTicketForm();
         resetNotificationForm();
         resetVerificationForm();
+        resetWelcomeForm();
         statusText.textContent = `Serverdaten fuer ${payload.guild.name} geladen.`;
       } catch (error) {
         currentOverview = null;
         notificationList.innerHTML = '<div class="empty">Notifications konnten nicht geladen werden.</div>';
         verificationCurrentCard.innerHTML = '<div class="empty">Verification konnte nicht geladen werden.</div>';
+        welcomeCurrentCard.innerHTML = '<div class="empty">Welcome konnte nicht geladen werden.</div>';
         ticketPanelsList.innerHTML = '<div class="empty">Serverdaten konnten nicht geladen werden.</div>';
         activeTicketsList.innerHTML = '<div class="empty">Tickets konnten nicht geladen werden.</div>';
         notificationCountStat.textContent = "0";
@@ -1615,6 +1750,121 @@
         setVerificationError(`Verification-Loeschen fehlgeschlagen: ${error.message}`);
         verificationStatusText.textContent = "Verification konnte nicht geloescht werden.";
         statusText.textContent = "Verification konnte nicht geloescht werden.";
+      }
+    }
+
+    async function saveWelcome() {
+      const guildId = guildSelect.value;
+      const apiBaseUrl = normalizeBaseUrl(apiBaseUrlInput.value || DEFAULT_API_BASE_URL);
+      const payload = {
+        welcome_channel_id: welcomeChannelSelect.value,
+        welcome_style: welcomeStyleSelect.value || "neon_card",
+      };
+
+      if (!guildId) {
+        setError("Bitte zuerst einen Discord Server auswaehlen.");
+        setWelcomeError("Bitte zuerst einen Discord Server auswaehlen.");
+        welcomeStatusText.textContent = "Welcome konnte nicht gespeichert werden.";
+        return;
+      }
+      if (!payload.welcome_channel_id) {
+        setError("Bitte einen Welcome-Channel auswaehlen.");
+        setWelcomeError("Bitte einen Welcome-Channel auswaehlen.");
+        welcomeStatusText.textContent = "Pflichtfelder fehlen.";
+        return;
+      }
+
+      setError("");
+      setWelcomeError("");
+      statusText.textContent = "Welcome wird gespeichert...";
+      welcomeStatusText.textContent = "Welcome wird gespeichert...";
+      try {
+        const response = await fetch(`${apiBaseUrl}/api/guilds/${guildId}/welcome`, {
+          method: "PUT",
+          headers: {
+            ...getAuthHeaders(),
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(payload),
+        });
+        const body = await response.json();
+        if (!response.ok) throw new Error(body.error || `HTTP ${response.status}`);
+        await loadOverview();
+        await loadWelcomeSettings();
+        welcomeStatusText.textContent = "Welcome gespeichert.";
+        statusText.textContent = "Welcome gespeichert.";
+      } catch (error) {
+        setError(`Welcome fehlgeschlagen: ${error.message}`);
+        setWelcomeError(`Welcome fehlgeschlagen: ${error.message}`);
+        welcomeStatusText.textContent = "Welcome konnte nicht gespeichert werden.";
+        statusText.textContent = "Welcome konnte nicht gespeichert werden.";
+      }
+    }
+
+    async function deleteWelcome() {
+      const guildId = guildSelect.value;
+      const apiBaseUrl = normalizeBaseUrl(apiBaseUrlInput.value || DEFAULT_API_BASE_URL);
+      if (!guildId) {
+        setError("Bitte zuerst einen Discord Server auswaehlen.");
+        setWelcomeError("Bitte zuerst einen Discord Server auswaehlen.");
+        welcomeStatusText.textContent = "Kein Server ausgewaehlt.";
+        return;
+      }
+
+      setError("");
+      setWelcomeError("");
+      statusText.textContent = "Welcome wird geloescht...";
+      welcomeStatusText.textContent = "Welcome wird geloescht...";
+      try {
+        const response = await fetch(`${apiBaseUrl}/api/guilds/${guildId}/welcome`, {
+          method: "DELETE",
+          headers: getAuthHeaders(),
+        });
+        const body = await response.json();
+        if (!response.ok) throw new Error(body.error || `HTTP ${response.status}`);
+        if (currentOverview) {
+          currentOverview.welcome = body.welcome || null;
+        }
+        renderWelcome(body.welcome || null, Boolean(currentOverview?.members_intent_enabled));
+        resetWelcomeForm();
+        welcomeStatusText.textContent = "Welcome geloescht.";
+        statusText.textContent = "Welcome geloescht.";
+      } catch (error) {
+        setError(`Welcome-Loeschen fehlgeschlagen: ${error.message}`);
+        setWelcomeError(`Welcome-Loeschen fehlgeschlagen: ${error.message}`);
+        welcomeStatusText.textContent = "Welcome konnte nicht geloescht werden.";
+        statusText.textContent = "Welcome konnte nicht geloescht werden.";
+      }
+    }
+
+    async function previewWelcome() {
+      const guildId = guildSelect.value;
+      const apiBaseUrl = normalizeBaseUrl(apiBaseUrlInput.value || DEFAULT_API_BASE_URL);
+      if (!guildId) {
+        setError("Bitte zuerst einen Discord Server auswaehlen.");
+        setWelcomeError("Bitte zuerst einen Discord Server auswaehlen.");
+        welcomeStatusText.textContent = "Kein Server ausgewaehlt.";
+        return;
+      }
+
+      setError("");
+      setWelcomeError("");
+      statusText.textContent = "Welcome-Preview wird gesendet...";
+      welcomeStatusText.textContent = "Welcome-Preview wird gesendet...";
+      try {
+        const response = await fetch(`${apiBaseUrl}/api/guilds/${guildId}/welcome/preview`, {
+          method: "POST",
+          headers: getAuthHeaders(),
+        });
+        const body = await response.json();
+        if (!response.ok) throw new Error(body.error || `HTTP ${response.status}`);
+        welcomeStatusText.textContent = "Preview wurde gesendet.";
+        statusText.textContent = "Welcome-Preview wurde gesendet.";
+      } catch (error) {
+        setError(`Welcome-Preview fehlgeschlagen: ${error.message}`);
+        setWelcomeError(`Welcome-Preview fehlgeschlagen: ${error.message}`);
+        welcomeStatusText.textContent = "Preview konnte nicht gesendet werden.";
+        statusText.textContent = "Welcome-Preview konnte nicht gesendet werden.";
       }
     }
 
@@ -1847,6 +2097,9 @@
     saveVerificationButton.addEventListener("click", saveVerification);
     resetVerificationButton.addEventListener("click", resetVerificationForm);
     deleteVerificationButton.addEventListener("click", deleteVerification);
+    saveWelcomeButton.addEventListener("click", saveWelcome);
+    previewWelcomeButton.addEventListener("click", previewWelcome);
+    deleteWelcomeButton.addEventListener("click", deleteWelcome);
     verificationCaptchaSelect.addEventListener("change", updateVerificationCaptchaState);
     document.getElementById("checkNotificationsButton").addEventListener("click", checkNotificationsNow);
     document.getElementById("discordLoginButton").addEventListener("click", () => {
@@ -1868,6 +2121,7 @@
       selectedGuildNameText.textContent = "Noch kein Server ausgewaehlt.";
       notificationList.innerHTML = '<div class="empty">Discord-Session getrennt.</div>';
       verificationCurrentCard.innerHTML = '<div class="empty">Discord-Session getrennt.</div>';
+      welcomeCurrentCard.innerHTML = '<div class="empty">Discord-Session getrennt.</div>';
       ticketPanelsList.innerHTML = '<div class="empty">Discord-Session getrennt.</div>';
       activeTicketsList.innerHTML = '<div class="empty">Discord-Session getrennt.</div>';
       adminCurrentGuildCard.innerHTML = '<div class="empty">Discord-Session getrennt.</div>';
@@ -1878,6 +2132,7 @@
       resetTicketForm();
       resetNotificationForm();
       resetVerificationForm();
+      resetWelcomeForm();
       setOauthError("");
       statusText.textContent = "Discord-Session lokal entfernt.";
       saveState();
@@ -1892,6 +2147,7 @@
       selectedGuildNameText.textContent = "Noch kein Server ausgewaehlt.";
       notificationList.innerHTML = '<div class="empty">Waehle zuerst einen Server aus.</div>';
       verificationCurrentCard.innerHTML = '<div class="empty">Waehle zuerst einen Server aus.</div>';
+      welcomeCurrentCard.innerHTML = '<div class="empty">Waehle zuerst einen Server aus.</div>';
       ticketPanelsList.innerHTML = '<div class="empty">Waehle zuerst einen Server aus.</div>';
       activeTicketsList.innerHTML = '<div class="empty">Waehle zuerst einen Server aus.</div>';
       renderAdminCurrentGuild();
@@ -1901,6 +2157,7 @@
       resetTicketForm();
       resetNotificationForm();
       resetVerificationForm();
+      resetWelcomeForm();
       saveState();
       updateGateState();
       statusText.textContent = "Bitte waehle einen anderen Server aus.";

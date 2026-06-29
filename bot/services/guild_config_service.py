@@ -117,6 +117,18 @@ class GuildConfigService:
             repo = GuildRepository(session)
             await repo.set_logs(guild_id, enabled, channel_id, self.default_language)
 
+    async def set_welcome(
+        self,
+        database: DatabaseSessionManager,
+        guild_id: int,
+        enabled: bool,
+        channel_id: int | None,
+        style: str,
+    ) -> None:
+        async with database.session() as session:
+            repo = GuildRepository(session)
+            await repo.set_welcome(guild_id, enabled, channel_id, style, self.default_language)
+
     async def get_mod_role_ids(self, database: DatabaseSessionManager, guild_id: int) -> list[int]:
         settings = await self.get_settings(database, guild_id)
         if settings is None or not settings.mod_role_ids_json:

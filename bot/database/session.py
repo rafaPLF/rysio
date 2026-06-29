@@ -80,6 +80,12 @@ class DatabaseSessionManager:
             connection.execute(text("ALTER TABLE guild_settings ADD COLUMN join_to_create_category_id BIGINT"))
         if "mod_role_ids_json" not in guild_settings_columns:
             connection.execute(text("ALTER TABLE guild_settings ADD COLUMN mod_role_ids_json TEXT"))
+        if "welcome_enabled" not in guild_settings_columns:
+            connection.execute(text("ALTER TABLE guild_settings ADD COLUMN welcome_enabled BOOLEAN DEFAULT FALSE"))
+        if "welcome_channel_id" not in guild_settings_columns:
+            connection.execute(text("ALTER TABLE guild_settings ADD COLUMN welcome_channel_id BIGINT"))
+        if "welcome_style" not in guild_settings_columns:
+            connection.execute(text("ALTER TABLE guild_settings ADD COLUMN welcome_style VARCHAR(32) DEFAULT 'neon_card'"))
 
         if "notification_subscriptions" not in tables:
             return
