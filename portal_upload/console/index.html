@@ -288,6 +288,7 @@
             <button class="nav-button" type="button" data-nav-view="notifications"><span>Notifications</span><span>Live</span></button>
             <button class="nav-button" type="button" data-nav-view="verification"><span>Verification</span><span>Access</span></button>
             <button class="nav-button" type="button" data-nav-view="welcome"><span>Welcome</span><span>Join</span></button>
+            <button class="nav-button" type="button" data-nav-view="join-to-create"><span>Join to Create</span><span>Voice</span></button>
             <button class="nav-button" type="button" data-nav-view="tickets"><span>Tickets</span><span>Support</span></button>
             <button class="nav-button" type="button" data-nav-view="logs"><span>Logs</span><span>Audit</span></button>
             <button class="nav-button hidden" type="button" data-nav-view="admin" id="adminNavButton"><span>Admin</span><span>Owner</span></button>
@@ -501,6 +502,47 @@
             <section class="card">
               <h3>Aktuelle Welcome-Config</h3>
               <div id="welcomeCurrentCard" class="panel-list">
+                <div class="empty">Noch kein Server geladen.</div>
+              </div>
+            </section>
+          </div>
+        </section>
+        <section class="card panel-view hidden" data-panel-view="join-to-create">
+          <div class="panel-head">
+            <div>
+              <h2 class="panel-view-title">Join to Create</h2>
+              <p class="muted">Lege fest, welcher Voice-Channel als Lobby dient und in welcher Kategorie temporaere Raeume erstellt werden.</p>
+            </div>
+            <span class="panel-tag">Voice Setup</span>
+          </div>
+          <div class="ticket-grid">
+            <section class="card">
+              <h3>Join-to-Create einrichten</h3>
+              <div class="stack">
+                <div>
+                  <label for="jtcLobbyChannelSelect">Lobby Voice-Channel</label>
+                  <select id="jtcLobbyChannelSelect">
+                    <option value="">Voice-Channel auswaehlen</option>
+                  </select>
+                </div>
+                <div>
+                  <label for="jtcCategorySelect">Kategorie fuer temporaere Raeume</label>
+                  <select id="jtcCategorySelect">
+                    <option value="">Keine Kategorie</option>
+                  </select>
+                </div>
+              </div>
+              <div class="button-row" style="margin-top:14px;">
+                <button id="saveJtcButton" type="button">Join to Create speichern</button>
+                <button id="resetJtcButton" type="button" class="ghost">Formular zuruecksetzen</button>
+                <button id="deleteJtcButton" type="button" class="danger-button">Join to Create loeschen</button>
+              </div>
+              <p id="jtcStatusText" class="meta" style="margin-top:12px;">Bereit.</p>
+              <p id="jtcErrorText" class="error" hidden style="margin-top:8px;"></p>
+            </section>
+            <section class="card">
+              <h3>Aktuelles Join-to-Create</h3>
+              <div id="jtcCurrentCard" class="panel-list">
                 <div class="empty">Noch kein Server geladen.</div>
               </div>
             </section>
@@ -735,6 +777,14 @@
     const deleteWelcomeButton = document.getElementById("deleteWelcomeButton");
     const welcomeStatusText = document.getElementById("welcomeStatusText");
     const welcomeErrorText = document.getElementById("welcomeErrorText");
+    const jtcLobbyChannelSelect = document.getElementById("jtcLobbyChannelSelect");
+    const jtcCategorySelect = document.getElementById("jtcCategorySelect");
+    const jtcCurrentCard = document.getElementById("jtcCurrentCard");
+    const saveJtcButton = document.getElementById("saveJtcButton");
+    const resetJtcButton = document.getElementById("resetJtcButton");
+    const deleteJtcButton = document.getElementById("deleteJtcButton");
+    const jtcStatusText = document.getElementById("jtcStatusText");
+    const jtcErrorText = document.getElementById("jtcErrorText");
     const adminCurrentGuildCard = document.getElementById("adminCurrentGuildCard");
     const adminGuildList = document.getElementById("adminGuildList");
 
@@ -828,6 +878,13 @@
           loadOverview();
         } else {
           loadWelcomeSettings();
+        }
+      }
+      if (currentPanelView === "join-to-create" && guildSelect.value) {
+        if (!currentOverview) {
+          loadOverview();
+        } else {
+          loadJoinToCreateSettings();
         }
       }
       if (currentPanelView === "admin" && ownerPanelEnabled) {
@@ -947,6 +1004,16 @@
       welcomeErrorText.textContent = message;
     }
 
+    function setJtcError(message) {
+      if (!message) {
+        jtcErrorText.hidden = true;
+        jtcErrorText.textContent = "";
+        return;
+      }
+      jtcErrorText.hidden = false;
+      jtcErrorText.textContent = message;
+    }
+
     function resetTicketForm() {
       editingPanelId = null;
       ticketFormHeading.textContent = "Neues Ticket-Panel erstellen";
@@ -989,6 +1056,13 @@
       welcomeStyleSelect.value = currentOverview?.welcome?.welcome_style || "neon_card";
       welcomeStatusText.textContent = "Bereit.";
       setWelcomeError("");
+    }
+
+    function resetJtcForm() {
+      jtcLobbyChannelSelect.value = currentOverview?.join_to_create?.lobby_channel_id || "";
+      jtcCategorySelect.value = currentOverview?.join_to_create?.category_id || "";
+      jtcStatusText.textContent = "Bereit.";
+      setJtcError("");
     }
 
     function updateVerificationCaptchaState() {
@@ -1069,6 +1143,26 @@
             <div>Channel: <strong>#${escapeHtml(welcome.welcome_channel_name || "Unbekannt")}</strong></div>
             <div>Style: <strong>${escapeHtml(welcome.welcome_style || "neon_card")}</strong></div>
             <div>Join-Erkennung: <strong>${membersIntentEnabled ? "bereit" : "Members-Intent aus"}</strong></div>
+          </div>
+        </article>
+      `;
+    }
+
+    function renderJoinToCreate(settings) {
+      if (!settings || !settings.enabled || !settings.lobby_channel_id) {
+        jtcCurrentCard.innerHTML = '<div class="empty">Join to Create ist fuer diesen Server noch nicht eingerichtet.</div>';
+        return;
+      }
+      jtcCurrentCard.innerHTML = `
+        <article class="panel-card">
+          <div class="panel-head">
+            <strong>Join to Create aktiv</strong>
+            <span class="panel-tag">Voice</span>
+          </div>
+          <div class="panel-meta">
+            <div>Lobby: <strong>${escapeHtml(settings.lobby_channel_name || "Unbekannt")}</strong></div>
+            <div>Kategorie: <strong>${escapeHtml(settings.category_name || "Keine")}</strong></div>
+            <div>Status: <strong>${settings.enabled ? "bereit" : "aus"}</strong></div>
           </div>
         </article>
       `;
@@ -1365,6 +1459,7 @@
       notificationChannelSelect.innerHTML = '<option value="">Channel auswaehlen</option>';
       verificationChannelSelect.innerHTML = '<option value="">Channel auswaehlen</option>';
       welcomeChannelSelect.innerHTML = '<option value="">Channel auswaehlen</option>';
+      jtcLobbyChannelSelect.innerHTML = '<option value="">Voice-Channel auswaehlen</option>';
       for (const channel of overview.channels || []) {
         const option = document.createElement("option");
         option.value = channel.id;
@@ -1386,13 +1481,24 @@
         welcomeOption.textContent = `#${channel.name}`;
         welcomeChannelSelect.appendChild(welcomeOption);
       }
+      for (const channel of overview.voice_channels || []) {
+        const jtcOption = document.createElement("option");
+        jtcOption.value = channel.id;
+        jtcOption.textContent = channel.name;
+        jtcLobbyChannelSelect.appendChild(jtcOption);
+      }
 
       ticketCategorySelect.innerHTML = '<option value="">Keine Kategorie</option>';
+      jtcCategorySelect.innerHTML = '<option value="">Keine Kategorie</option>';
       for (const category of overview.categories || []) {
         const option = document.createElement("option");
         option.value = category.id;
         option.textContent = category.name;
         ticketCategorySelect.appendChild(option);
+        const jtcCategoryOption = document.createElement("option");
+        jtcCategoryOption.value = category.id;
+        jtcCategoryOption.textContent = category.name;
+        jtcCategorySelect.appendChild(jtcCategoryOption);
       }
 
       ticketSupportRoleSelect.innerHTML = '<option value="">Keine Support Rolle</option>';
@@ -1418,11 +1524,13 @@
       renderNotifications(overview.notifications || []);
       renderVerification(overview.verification || null);
       renderWelcome(overview.welcome || null, Boolean(overview.members_intent_enabled));
+      renderJoinToCreate(overview.join_to_create || null);
       renderTicketPanels(overview.ticket_panels || []);
       renderActiveTickets(overview.active_tickets || []);
       renderAdminCurrentGuild();
       resetVerificationForm();
       resetWelcomeForm();
+      resetJtcForm();
     }
 
     async function loadVerificationSettings() {
@@ -1473,6 +1581,31 @@
       } catch (error) {
         setWelcomeError(`Welcome-Laden fehlgeschlagen: ${error.message}`);
         welcomeCurrentCard.innerHTML = '<div class="empty">Welcome konnte nicht geladen werden.</div>';
+      }
+    }
+
+    async function loadJoinToCreateSettings() {
+      const guildId = guildSelect.value;
+      const apiBaseUrl = normalizeBaseUrl(apiBaseUrlInput.value || DEFAULT_API_BASE_URL);
+      if (!guildId) {
+        jtcCurrentCard.innerHTML = '<div class="empty">Waehle zuerst einen Server aus.</div>';
+        return;
+      }
+
+      try {
+        const response = await fetch(`${apiBaseUrl}/api/guilds/${guildId}/join-to-create`, {
+          headers: getAuthHeaders(),
+        });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || `HTTP ${response.status}`);
+        renderJoinToCreate(payload.join_to_create || null);
+        if (currentOverview) {
+          currentOverview.join_to_create = payload.join_to_create || null;
+          resetJtcForm();
+        }
+      } catch (error) {
+        setJtcError(`Join-to-Create-Laden fehlgeschlagen: ${error.message}`);
+        jtcCurrentCard.innerHTML = '<div class="empty">Join to Create konnte nicht geladen werden.</div>';
       }
     }
 
@@ -1563,6 +1696,7 @@
         notificationList.innerHTML = '<div class="empty">Waehle zuerst einen Server aus.</div>';
         verificationCurrentCard.innerHTML = '<div class="empty">Waehle zuerst einen Server aus.</div>';
         welcomeCurrentCard.innerHTML = '<div class="empty">Waehle zuerst einen Server aus.</div>';
+        jtcCurrentCard.innerHTML = '<div class="empty">Waehle zuerst einen Server aus.</div>';
         ticketPanelsList.innerHTML = '<div class="empty">Waehle zuerst einen Server aus.</div>';
         activeTicketsList.innerHTML = '<div class="empty">Waehle zuerst einen Server aus.</div>';
         notificationCountStat.textContent = "0";
@@ -1572,6 +1706,7 @@
         resetNotificationForm();
         resetVerificationForm();
         resetWelcomeForm();
+        resetJtcForm();
         return;
       }
 
@@ -1589,12 +1724,14 @@
         resetNotificationForm();
         resetVerificationForm();
         resetWelcomeForm();
+        resetJtcForm();
         statusText.textContent = `Serverdaten fuer ${payload.guild.name} geladen.`;
       } catch (error) {
         currentOverview = null;
         notificationList.innerHTML = '<div class="empty">Notifications konnten nicht geladen werden.</div>';
         verificationCurrentCard.innerHTML = '<div class="empty">Verification konnte nicht geladen werden.</div>';
         welcomeCurrentCard.innerHTML = '<div class="empty">Welcome konnte nicht geladen werden.</div>';
+        jtcCurrentCard.innerHTML = '<div class="empty">Join to Create konnte nicht geladen werden.</div>';
         ticketPanelsList.innerHTML = '<div class="empty">Serverdaten konnten nicht geladen werden.</div>';
         activeTicketsList.innerHTML = '<div class="empty">Tickets konnten nicht geladen werden.</div>';
         notificationCountStat.textContent = "0";
@@ -1869,6 +2006,90 @@
       }
     }
 
+    async function saveJoinToCreate() {
+      const guildId = guildSelect.value;
+      const apiBaseUrl = normalizeBaseUrl(apiBaseUrlInput.value || DEFAULT_API_BASE_URL);
+      const payload = {
+        lobby_channel_id: jtcLobbyChannelSelect.value,
+        category_id: jtcCategorySelect.value,
+      };
+
+      if (!guildId) {
+        setError("Bitte zuerst einen Discord Server auswaehlen.");
+        setJtcError("Bitte zuerst einen Discord Server auswaehlen.");
+        jtcStatusText.textContent = "Join to Create konnte nicht gespeichert werden.";
+        return;
+      }
+      if (!payload.lobby_channel_id) {
+        setError("Bitte einen Lobby Voice-Channel auswaehlen.");
+        setJtcError("Bitte einen Lobby Voice-Channel auswaehlen.");
+        jtcStatusText.textContent = "Pflichtfelder fehlen.";
+        return;
+      }
+
+      setError("");
+      setJtcError("");
+      statusText.textContent = "Join to Create wird gespeichert...";
+      jtcStatusText.textContent = "Join to Create wird gespeichert...";
+      try {
+        const response = await fetch(`${apiBaseUrl}/api/guilds/${guildId}/join-to-create`, {
+          method: "PUT",
+          headers: {
+            ...getAuthHeaders(),
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(payload),
+        });
+        const body = await response.json();
+        if (!response.ok) throw new Error(body.error || `HTTP ${response.status}`);
+        await loadOverview();
+        await loadJoinToCreateSettings();
+        jtcStatusText.textContent = "Join to Create gespeichert.";
+        statusText.textContent = "Join to Create gespeichert.";
+      } catch (error) {
+        setError(`Join to Create fehlgeschlagen: ${error.message}`);
+        setJtcError(`Join to Create fehlgeschlagen: ${error.message}`);
+        jtcStatusText.textContent = "Join to Create konnte nicht gespeichert werden.";
+        statusText.textContent = "Join to Create konnte nicht gespeichert werden.";
+      }
+    }
+
+    async function deleteJoinToCreate() {
+      const guildId = guildSelect.value;
+      const apiBaseUrl = normalizeBaseUrl(apiBaseUrlInput.value || DEFAULT_API_BASE_URL);
+      if (!guildId) {
+        setError("Bitte zuerst einen Discord Server auswaehlen.");
+        setJtcError("Bitte zuerst einen Discord Server auswaehlen.");
+        jtcStatusText.textContent = "Kein Server ausgewaehlt.";
+        return;
+      }
+
+      setError("");
+      setJtcError("");
+      statusText.textContent = "Join to Create wird geloescht...";
+      jtcStatusText.textContent = "Join to Create wird geloescht...";
+      try {
+        const response = await fetch(`${apiBaseUrl}/api/guilds/${guildId}/join-to-create`, {
+          method: "DELETE",
+          headers: getAuthHeaders(),
+        });
+        const body = await response.json();
+        if (!response.ok) throw new Error(body.error || `HTTP ${response.status}`);
+        if (currentOverview) {
+          currentOverview.join_to_create = body.join_to_create || null;
+        }
+        renderJoinToCreate(body.join_to_create || null);
+        resetJtcForm();
+        jtcStatusText.textContent = "Join to Create geloescht.";
+        statusText.textContent = "Join to Create geloescht.";
+      } catch (error) {
+        setError(`Join-to-Create-Loeschen fehlgeschlagen: ${error.message}`);
+        setJtcError(`Join-to-Create-Loeschen fehlgeschlagen: ${error.message}`);
+        jtcStatusText.textContent = "Join to Create konnte nicht geloescht werden.";
+        statusText.textContent = "Join to Create konnte nicht geloescht werden.";
+      }
+    }
+
     async function deleteNotification(subscriptionId) {
       const guildId = guildSelect.value;
       const apiBaseUrl = normalizeBaseUrl(apiBaseUrlInput.value || DEFAULT_API_BASE_URL);
@@ -2101,6 +2322,9 @@
     saveWelcomeButton.addEventListener("click", saveWelcome);
     previewWelcomeButton.addEventListener("click", previewWelcome);
     deleteWelcomeButton.addEventListener("click", deleteWelcome);
+    saveJtcButton.addEventListener("click", saveJoinToCreate);
+    resetJtcButton.addEventListener("click", resetJtcForm);
+    deleteJtcButton.addEventListener("click", deleteJoinToCreate);
     verificationCaptchaSelect.addEventListener("change", updateVerificationCaptchaState);
     document.getElementById("checkNotificationsButton").addEventListener("click", checkNotificationsNow);
     document.getElementById("discordLoginButton").addEventListener("click", () => {
@@ -2123,6 +2347,7 @@
       notificationList.innerHTML = '<div class="empty">Discord-Session getrennt.</div>';
       verificationCurrentCard.innerHTML = '<div class="empty">Discord-Session getrennt.</div>';
       welcomeCurrentCard.innerHTML = '<div class="empty">Discord-Session getrennt.</div>';
+      jtcCurrentCard.innerHTML = '<div class="empty">Discord-Session getrennt.</div>';
       ticketPanelsList.innerHTML = '<div class="empty">Discord-Session getrennt.</div>';
       activeTicketsList.innerHTML = '<div class="empty">Discord-Session getrennt.</div>';
       adminCurrentGuildCard.innerHTML = '<div class="empty">Discord-Session getrennt.</div>';
@@ -2134,6 +2359,7 @@
       resetNotificationForm();
       resetVerificationForm();
       resetWelcomeForm();
+      resetJtcForm();
       setOauthError("");
       statusText.textContent = "Discord-Session lokal entfernt.";
       saveState();
@@ -2149,6 +2375,7 @@
       notificationList.innerHTML = '<div class="empty">Waehle zuerst einen Server aus.</div>';
       verificationCurrentCard.innerHTML = '<div class="empty">Waehle zuerst einen Server aus.</div>';
       welcomeCurrentCard.innerHTML = '<div class="empty">Waehle zuerst einen Server aus.</div>';
+      jtcCurrentCard.innerHTML = '<div class="empty">Waehle zuerst einen Server aus.</div>';
       ticketPanelsList.innerHTML = '<div class="empty">Waehle zuerst einen Server aus.</div>';
       activeTicketsList.innerHTML = '<div class="empty">Waehle zuerst einen Server aus.</div>';
       renderAdminCurrentGuild();
@@ -2159,6 +2386,7 @@
       resetNotificationForm();
       resetVerificationForm();
       resetWelcomeForm();
+      resetJtcForm();
       saveState();
       updateGateState();
       statusText.textContent = "Bitte waehle einen anderen Server aus.";

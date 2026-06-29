@@ -76,6 +76,15 @@ def _serialize_text_channel(channel: discord.TextChannel) -> dict[str, Any]:
     }
 
 
+def _serialize_voice_channel(channel: discord.VoiceChannel) -> dict[str, Any]:
+    return {
+        "id": str(channel.id),
+        "name": channel.name,
+        "position": channel.position,
+        "category_id": str(channel.category_id) if channel.category_id else None,
+    }
+
+
 def _serialize_category(channel: discord.CategoryChannel) -> dict[str, Any]:
     return {
         "id": str(channel.id),
@@ -191,6 +200,18 @@ def _serialize_welcome_settings(settings, guild: discord.Guild) -> dict[str, Any
         "welcome_channel_id": str(settings.welcome_channel_id) if settings and settings.welcome_channel_id else None,
         "welcome_channel_name": channel.name if isinstance(channel, discord.TextChannel) else None,
         "welcome_style": settings.welcome_style if settings and settings.welcome_style else "neon_card",
+    }
+
+
+def _serialize_join_to_create_settings(settings, guild: discord.Guild) -> dict[str, Any]:
+    lobby = guild.get_channel(settings.join_to_create_channel_id) if settings and settings.join_to_create_channel_id else None
+    category = guild.get_channel(settings.join_to_create_category_id) if settings and settings.join_to_create_category_id else None
+    return {
+        "enabled": bool(settings.join_to_create_enabled) if settings else False,
+        "lobby_channel_id": str(settings.join_to_create_channel_id) if settings and settings.join_to_create_channel_id else None,
+        "lobby_channel_name": lobby.name if isinstance(lobby, discord.VoiceChannel) else None,
+        "category_id": str(settings.join_to_create_category_id) if settings and settings.join_to_create_category_id else None,
+        "category_name": category.name if isinstance(category, discord.CategoryChannel) else None,
     }
 
 
@@ -477,6 +498,10 @@ async def get_guild_overview(request: web.Request) -> web.Response:
             [_serialize_text_channel(channel) for channel in guild.text_channels],
             key=lambda item: (item["position"], item["name"].lower()),
         ),
+        "voice_channels": sorted(
+            [_serialize_voice_channel(channel) for channel in guild.voice_channels],
+            key=lambda item: (item["position"], item["name"].lower()),
+        ),
         "categories": sorted(
             [_serialize_category(channel) for channel in guild.categories],
             key=lambda item: (item["position"], item["name"].lower()),
@@ -488,6 +513,7 @@ async def get_guild_overview(request: web.Request) -> web.Response:
         "notifications": [_serialize_notification_subscription(subscription, guild) for subscription in notifications],
         "verification": _serialize_verification_settings(verification, guild, enabled=bool(settings.verification_enabled)),
         "welcome": _serialize_welcome_settings(settings, guild),
+        "join_to_create": _serialize_join_to_create_settings(settings, guild),
         "members_intent_enabled": bool(getattr(bot.settings, "enable_members_intent", False)),
         "ticket_panels": [_serialize_ticket_panel(panel, guild) for panel in panels],
         "active_tickets": serialized_tickets,
@@ -510,6 +536,25 @@ async def get_guild_welcome(request: web.Request) -> web.Response:
         {
             "welcome": _serialize_welcome_settings(settings, guild),
             "members_intent_enabled": bool(getattr(bot.settings, "enable_members_intent", False)),
+        }
+    )
+
+
+async def get_guild_join_to_create(request: web.Request) -> web.Response:
+    guild = await _get_authorized_guild(request)
+    if guild is None:
+        return _forbidden("guild_access_denied")
+    if not await _session_can_manage_guild(request, guild):
+        return _forbidden("guild_manage_required")
+
+    database: DatabaseSessionManager = request.app["database"]
+    async with database.session() as session:
+        guild_repo = GuildRepository(session)
+        settings = await guild_repo.ensure_settings(guild.id)
+
+    return web.json_response(
+        {
+            "join_to_create": _serialize_join_to_create_settings(settings, guild),
         }
     )
 
@@ -595,6 +640,69 @@ async def preview_welcome_settings(request: web.Request) -> web.Response:
 
     await send_welcome_message(bot, member, channel=channel, style=settings.welcome_style or "neon_card")
     return web.json_response({"preview_sent": True, "channel_id": str(channel.id)})
+
+
+async def save_join_to_create_settings(request: web.Request) -> web.Response:
+    guild = await _get_authorized_guild(request)
+    if guild is None:
+        return _forbidden("guild_access_denied")
+    if not await _session_can_manage_guild(request, guild):
+        return _forbidden("guild_manage_required")
+
+    try:
+        payload = await request.json()
+    except json.JSONDecodeError:
+        return web.json_response({"error": "invalid_json"}, status=400)
+
+    lobby_channel_id_raw = str(payload.get("lobby_channel_id", "")).strip()
+    category_id_raw = str(payload.get("category_id", "")).strip()
+    if not lobby_channel_id_raw:
+        return web.json_response({"error": "missing_lobby_channel_id"}, status=400)
+
+    try:
+        lobby_channel_id = int(lobby_channel_id_raw)
+    except ValueError:
+        return web.json_response({"error": "invalid_lobby_channel_id"}, status=400)
+
+    lobby_channel = guild.get_channel(lobby_channel_id)
+    if not isinstance(lobby_channel, discord.VoiceChannel):
+        return web.json_response({"error": "lobby_channel_not_found"}, status=404)
+
+    category_id: int | None = None
+    if category_id_raw:
+        try:
+            category_id = int(category_id_raw)
+        except ValueError:
+            return web.json_response({"error": "invalid_category_id"}, status=400)
+        category = guild.get_channel(category_id)
+        if not isinstance(category, discord.CategoryChannel):
+            return web.json_response({"error": "category_not_found"}, status=404)
+
+    bot = request.app["bot"]
+    bot_member = guild.me or guild.get_member(bot.user.id)
+    if bot_member is None:
+        return web.json_response({"error": "bot_member_missing"}, status=500)
+    if not bot_member.guild_permissions.manage_channels:
+        return web.json_response({"error": "missing_manage_channels_permission"}, status=400)
+    if not bot_member.guild_permissions.move_members:
+        return web.json_response({"error": "missing_move_members_permission"}, status=400)
+
+    await bot.guild_config.set_join_to_create(bot.database, guild.id, True, lobby_channel.id, category_id)  # type: ignore[attr-defined]
+    settings = await bot.guild_config.get_settings(bot.database, guild.id)  # type: ignore[attr-defined]
+    return web.json_response({"updated": True, "join_to_create": _serialize_join_to_create_settings(settings, guild)})
+
+
+async def delete_join_to_create_settings(request: web.Request) -> web.Response:
+    guild = await _get_authorized_guild(request)
+    if guild is None:
+        return _forbidden("guild_access_denied")
+    if not await _session_can_manage_guild(request, guild):
+        return _forbidden("guild_manage_required")
+
+    bot = request.app["bot"]
+    await bot.guild_config.set_join_to_create(bot.database, guild.id, False, None, None)  # type: ignore[attr-defined]
+    settings = await bot.guild_config.get_settings(bot.database, guild.id)  # type: ignore[attr-defined]
+    return web.json_response({"deleted": True, "join_to_create": _serialize_join_to_create_settings(settings, guild)})
 
 
 async def get_guild_verification(request: web.Request) -> web.Response:
@@ -1497,6 +1605,9 @@ def create_web_app(database: DatabaseSessionManager, api_token: str, allowed_ori
     app.router.add_put("/api/guilds/{guild_id:\\d+}/welcome", save_welcome_settings)
     app.router.add_delete("/api/guilds/{guild_id:\\d+}/welcome", delete_welcome_settings)
     app.router.add_post("/api/guilds/{guild_id:\\d+}/welcome/preview", preview_welcome_settings)
+    app.router.add_get("/api/guilds/{guild_id:\\d+}/join-to-create", get_guild_join_to_create)
+    app.router.add_put("/api/guilds/{guild_id:\\d+}/join-to-create", save_join_to_create_settings)
+    app.router.add_delete("/api/guilds/{guild_id:\\d+}/join-to-create", delete_join_to_create_settings)
     app.router.add_get("/api/guilds/{guild_id:\\d+}/verification", get_guild_verification)
     app.router.add_put("/api/guilds/{guild_id:\\d+}/verification", save_verification_settings)
     app.router.add_delete("/api/guilds/{guild_id:\\d+}/verification", delete_verification_settings)
