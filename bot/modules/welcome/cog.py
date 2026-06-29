@@ -4,7 +4,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-from bot.modules.welcome.service import send_welcome_message
+from bot.modules.welcome.service import WELCOME_STYLE_NEON, WELCOME_STYLE_RYSIO, send_welcome_message
 from bot.utils.access import can_manage_guild
 
 
@@ -15,7 +15,7 @@ def _welcome_status_text(settings, channel: discord.TextChannel | None) -> str:
     return (
         "Welcome-Nachrichten sind aktiv.\n"
         f"Channel: {channel_text}\n"
-        f"Style: `{settings.welcome_style or 'neon_card'}`"
+        f"Style: `{settings.welcome_style or WELCOME_STYLE_NEON}`"
     )
 
 
@@ -45,8 +45,13 @@ class WelcomeGroup(app_commands.Group):
 
     @app_commands.command(name="setup", description="Legt den Welcome-Channel fuer neue Mitglieder fest.")
     @app_commands.default_permissions(manage_guild=True)
-    @app_commands.describe(channel="Channel fuer die Begruessung", style="Aktuell nur ein Theme, spaeter Premium-Varianten")
-    @app_commands.choices(style=[app_commands.Choice(name="Neon Card", value="neon_card")])
+    @app_commands.describe(channel="Channel fuer die Begruessung", style="Waehle die Welcome-Grafik aus")
+    @app_commands.choices(
+        style=[
+            app_commands.Choice(name="Neon Card", value=WELCOME_STYLE_NEON),
+            app_commands.Choice(name="Rysio Card", value=WELCOME_STYLE_RYSIO),
+        ]
+    )
     async def setup(
         self,
         interaction: discord.Interaction,
@@ -73,7 +78,7 @@ class WelcomeGroup(app_commands.Group):
             )
             return
 
-        selected_style = style.value if style else "neon_card"
+        selected_style = style.value if style else WELCOME_STYLE_NEON
         await interaction.client.guild_config.ensure_guild(interaction.client.database, interaction.guild.id)  # type: ignore[attr-defined]
         await interaction.client.guild_config.set_welcome(  # type: ignore[attr-defined]
             interaction.client.database,
@@ -114,7 +119,7 @@ class WelcomeGroup(app_commands.Group):
             return
 
         await interaction.response.defer(ephemeral=True)
-        await send_welcome_message(interaction.client, interaction.user, channel=channel, style=settings.welcome_style or "neon_card")
+        await send_welcome_message(interaction.client, interaction.user, channel=channel, style=settings.welcome_style or WELCOME_STYLE_NEON)
         await interaction.followup.send(f"Preview wurde in {channel.mention} gesendet.", ephemeral=True)
 
     @app_commands.command(name="disable", description="Deaktiviert Welcome-Nachrichten fuer diesen Server.")
@@ -132,7 +137,7 @@ class WelcomeGroup(app_commands.Group):
             interaction.guild.id,
             False,
             None,
-            "neon_card",
+            WELCOME_STYLE_NEON,
         )
         await interaction.response.send_message("Welcome-Nachrichten wurden deaktiviert.", ephemeral=True)
 
@@ -153,7 +158,7 @@ class WelcomeCog(commands.Cog):
             return
 
         try:
-            await send_welcome_message(self.bot, member, channel=channel, style=settings.welcome_style or "neon_card")
+            await send_welcome_message(self.bot, member, channel=channel, style=settings.welcome_style or WELCOME_STYLE_NEON)
         except discord.HTTPException:
             return
 

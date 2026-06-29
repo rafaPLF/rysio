@@ -528,7 +528,7 @@ async def save_welcome_settings(request: web.Request) -> web.Response:
 
     channel_id_raw = str(payload.get("welcome_channel_id", "")).strip()
     style = str(payload.get("welcome_style", "neon_card")).strip() or "neon_card"
-    if style != "neon_card":
+    if style not in {"neon_card", "rysio_card"}:
         return web.json_response({"error": "unsupported_welcome_style"}, status=400)
     if not channel_id_raw:
         return web.json_response({"error": "missing_welcome_channel_id"}, status=400)
