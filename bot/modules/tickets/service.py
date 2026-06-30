@@ -15,6 +15,28 @@ class TicketService:
     def _transcript_dir(self) -> Path:
         return Path(__file__).resolve().parents[3] / "transcripts"
 
+    async def notify_waiting_user(
+        self,
+        bot: discord.Client,
+        ticket,
+        ticket_channel: discord.TextChannel,
+    ) -> bool:
+        user = bot.get_user(ticket.user_id)
+        if user is None:
+            try:
+                user = await bot.fetch_user(ticket.user_id)
+            except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+                return False
+
+        try:
+            await user.send(
+                f"Hallo! In deinem Ticket auf **{ticket_channel.guild.name}** gibt es eine neue Antwort vom Team.\n"
+                f"Bitte schau in **#{ticket_channel.name}** vorbei."
+            )
+            return True
+        except (discord.Forbidden, discord.HTTPException):
+            return False
+
     async def restore_views(self, bot: discord.Client) -> None:
         from bot.modules.tickets.views import TicketCreateView, TicketManageView
 
@@ -52,8 +74,10 @@ class TicketService:
             ticket = await repo.get_ticket_by_channel(ticket_channel.id)
             if ticket is None:
                 return None
-            await repo.set_ticket_status(ticket, "waiting_user")
-            return ticket
+            ticket = await repo.set_ticket_status(ticket, "waiting_user")
+
+        await self.notify_waiting_user(bot, ticket, ticket_channel)
+        return ticket
 
     async def add_note(self, bot: discord.Client, ticket_channel: discord.TextChannel, author: discord.abc.User, note_text: str):
         async with bot.database.session() as session:  # type: ignore[attr-defined]

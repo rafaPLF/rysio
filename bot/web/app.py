@@ -1386,6 +1386,7 @@ async def set_ticket_waiting_user_from_panel(request: web.Request) -> web.Respon
     if not await _session_can_use_ticket_staff(request, guild):
         return _forbidden("ticket_staff_required")
 
+    bot = request.app["bot"]
     ticket_id = int(request.match_info["ticket_id"])
     database: DatabaseSessionManager = request.app["database"]
     async with database.session() as session:
@@ -1397,6 +1398,7 @@ async def set_ticket_waiting_user_from_panel(request: web.Request) -> web.Respon
 
     channel = guild.get_channel(ticket.channel_id)
     if isinstance(channel, discord.TextChannel):
+        await bot.tickets.notify_waiting_user(bot, ticket, channel)  # type: ignore[attr-defined]
         try:
             await channel.send("Ticket-Status auf `waiting_user` gesetzt.")
         except discord.HTTPException:
