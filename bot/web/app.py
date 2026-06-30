@@ -403,6 +403,8 @@ async def auth_middleware(request: web.Request, handler):
         return web.json_response({"error": "invalid_token"}, status=403)
 
     panel_token = request.headers.get("X-Rysio-Panel-Token", "").strip()
+    if not panel_token:
+        panel_token = request.query.get("panel_token", "").strip()
     session = get_session(request.app, panel_token)
     if session is None:
         return web.json_response({"error": "missing_authentication"}, status=401)

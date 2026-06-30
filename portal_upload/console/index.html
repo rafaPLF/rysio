@@ -1487,7 +1487,9 @@
       }
       const apiBase = normalizeBaseUrl(apiBaseUrlInput.value) || DEFAULT_API_BASE_URL;
       closedTicketsList.innerHTML = tickets.map((ticket) => {
-        const transcriptLink = ticket.transcript_api_path ? `${apiBase}${ticket.transcript_api_path}` : "";
+        const transcriptLink = ticket.transcript_api_path
+          ? `${apiBase}${ticket.transcript_api_path}${sessionToken ? `?panel_token=${encodeURIComponent(sessionToken)}` : ""}`
+          : "";
         return `
           <article class="transcript-item">
             <div class="transcript-main">
