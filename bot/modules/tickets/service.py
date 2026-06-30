@@ -15,6 +15,71 @@ class TicketService:
     def _transcript_dir(self) -> Path:
         return Path(__file__).resolve().parents[3] / "transcripts"
 
+    def _ticket_status_label(self, status: str) -> str:
+        labels = {
+            "open": "Open",
+            "claimed": "Claimed",
+            "waiting_user": "Wartet auf User",
+            "closed": "Closed",
+        }
+        return labels.get(status, status)
+
+    def _ticket_status_color(self, status: str) -> discord.Color:
+        colors = {
+            "open": discord.Color.blurple(),
+            "claimed": discord.Color.gold(),
+            "waiting_user": discord.Color.orange(),
+            "closed": discord.Color.red(),
+        }
+        return colors.get(status, discord.Color.blurple())
+
+    def build_ticket_status_embed(self, ticket) -> discord.Embed:
+        embed = discord.Embed(
+            title="Rysio Ticket Info",
+            description="Aktueller Ticket-Status und Bearbeitungsstand.",
+            color=self._ticket_status_color(ticket.status),
+        )
+        embed.add_field(name="Status", value=f"`{self._ticket_status_label(ticket.status)}`", inline=True)
+        embed.add_field(
+            name="Claim",
+            value=f"<@{ticket.claimed_by_user_id}>" if ticket.claimed_by_user_id else "`Nicht geclaimt`",
+            inline=True,
+        )
+        embed.add_field(name="Ticket-ID", value=f"`{ticket.id}`", inline=True)
+        embed.add_field(name="Erstellt von", value=f"<@{ticket.user_id}>", inline=True)
+        return embed
+
+    async def refresh_ticket_status_message(
+        self,
+        bot: discord.Client,
+        ticket_channel: discord.TextChannel,
+        ticket,
+        *,
+        fallback_content: str | None = None,
+    ) -> bool:
+        from bot.modules.tickets.views import TicketManageView
+
+        status_message = None
+        async for message in ticket_channel.history(limit=25, oldest_first=True):
+            if bot.user is None or message.author.id != bot.user.id:
+                continue
+            if message.components:
+                status_message = message
+                break
+
+        if status_message is None:
+            return False
+
+        try:
+            await status_message.edit(
+                content=status_message.content or fallback_content,
+                embed=self.build_ticket_status_embed(ticket),
+                view=TicketManageView(),
+            )
+            return True
+        except discord.HTTPException:
+            return False
+
     async def notify_waiting_user(
         self,
         bot: discord.Client,
@@ -76,6 +141,7 @@ class TicketService:
                 return None
             ticket = await repo.set_ticket_status(ticket, "waiting_user")
 
+        await self.refresh_ticket_status_message(bot, ticket_channel, ticket)
         await self.notify_waiting_user(bot, ticket, ticket_channel)
         return ticket
 

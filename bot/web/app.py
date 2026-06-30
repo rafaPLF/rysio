@@ -1398,6 +1398,7 @@ async def set_ticket_waiting_user_from_panel(request: web.Request) -> web.Respon
 
     channel = guild.get_channel(ticket.channel_id)
     if isinstance(channel, discord.TextChannel):
+        await bot.tickets.refresh_ticket_status_message(bot, channel, ticket)  # type: ignore[attr-defined]
         await bot.tickets.notify_waiting_user(bot, ticket, channel)  # type: ignore[attr-defined]
         try:
             await channel.send("Ticket-Status auf `waiting_user` gesetzt.")

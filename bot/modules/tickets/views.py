@@ -95,13 +95,17 @@ class TicketCreateView(discord.ui.View):
             repo = TicketRepository(session)
             ticket = await repo.create_ticket(interaction.guild.id, ticket_channel.id, interaction.user.id, panel.id if panel else None)
 
+        ticket_service = interaction.client.tickets  # type: ignore[attr-defined]
         content = panel.welcome_message if panel and panel.welcome_message else interaction.client.localization.translate(  # type: ignore[attr-defined]
             "tickets.created_channel_message",
             language=language,
             user=interaction.user.mention,
         )
-        auto_status = f"\n\nStatus: `open`\nTicket-ID: `{ticket.id}`"
-        await ticket_channel.send(content + auto_status, view=TicketManageView())
+        await ticket_channel.send(
+            content,
+            embed=ticket_service.build_ticket_status_embed(ticket),
+            view=TicketManageView(),
+        )
 
         response = interaction.client.localization.translate(  # type: ignore[attr-defined]
             "tickets.created_success",
@@ -129,6 +133,8 @@ class TicketManageView(discord.ui.View):
         if error:
             await interaction.response.send_message(error, ephemeral=True)
             return
+
+        await ticket_service.refresh_ticket_status_message(interaction.client, interaction.channel, ticket)
 
         await interaction.response.send_message(
             f"Ticket uebernommen von {interaction.user.mention}. Status: `claimed`",
