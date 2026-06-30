@@ -4,6 +4,11 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Rysio Control Panel</title>
+  <meta name="theme-color" content="#5b88ff">
+  <meta name="apple-mobile-web-app-title" content="Rysio Console">
+  <link rel="icon" type="image/png" sizes="512x512" href="../rysioohnebg.png">
+  <link rel="apple-touch-icon" href="../rysioohnebg.png">
+  <link rel="shortcut icon" href="../rysioohnebg.png" type="image/png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
@@ -598,8 +603,8 @@
                   </select>
                 </div>
                 <div>
-                  <label for="ticketCategorySelect">Ticket Kategorie</label>
-                  <select id="ticketCategorySelect">
+                  <label for="ticketCategorySelect">Ticket Kategorien</label>
+                  <select id="ticketCategorySelect" multiple size="5">
                     <option value="">Keine Kategorie</option>
                   </select>
                 </div>
@@ -675,20 +680,20 @@
             </div>
             <span class="panel-tag">Owner Only</span>
           </div>
-          <div class="ticket-grid">
-            <section class="card">
-              <h3>Aktueller Server</h3>
-              <div id="adminCurrentGuildCard" class="panel-list">
-                <div class="empty">Waehle oder lade zuerst einen Server.</div>
+          <section class="card">
+            <h3>Bot-Server auswaehlen</h3>
+            <div class="stack">
+              <div>
+                <label for="adminGuildSelect">Admin Server</label>
+                <select id="adminGuildSelect">
+                  <option value="">Server auswaehlen</option>
+                </select>
               </div>
-            </section>
-            <section class="card">
-              <h3>Alle Bot-Server</h3>
-              <div id="adminGuildList" class="panel-list">
-                <div class="empty">Admin-Daten wurden noch nicht geladen.</div>
-              </div>
-            </section>
-          </div>
+            </div>
+            <div id="adminGuildDetail" class="panel-list" style="margin-top:16px;">
+              <div class="empty">Waehle oben einen Bot-Server aus.</div>
+            </div>
+          </section>
         </section>
         <section class="card panel-view hidden" data-panel-view="connection">
           <div class="panel-head">
@@ -829,8 +834,8 @@
     const deleteJtcButton = document.getElementById("deleteJtcButton");
     const jtcStatusText = document.getElementById("jtcStatusText");
     const jtcErrorText = document.getElementById("jtcErrorText");
-    const adminCurrentGuildCard = document.getElementById("adminCurrentGuildCard");
-    const adminGuildList = document.getElementById("adminGuildList");
+    const adminGuildSelect = document.getElementById("adminGuildSelect");
+    const adminGuildDetail = document.getElementById("adminGuildDetail");
 
     let sessionToken = "";
     let preferredGuildId = "";
@@ -841,6 +846,7 @@
     let editingNotificationId = null;
     let ownerPanelEnabled = false;
     let adminGuilds = [];
+    let selectedAdminGuildId = "";
 
     function escapeHtml(value) {
       return String(value).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#39;");
@@ -1065,12 +1071,25 @@
       jtcErrorText.textContent = message;
     }
 
+    function getSelectedValues(selectElement) {
+      return [...selectElement.selectedOptions]
+        .map((option) => option.value)
+        .filter((value) => value);
+    }
+
+    function setSelectedValues(selectElement, values) {
+      const selectedSet = new Set((values || []).map((value) => String(value)));
+      for (const option of selectElement.options) {
+        option.selected = selectedSet.has(option.value);
+      }
+    }
+
     function resetTicketForm() {
       editingPanelId = null;
       ticketFormHeading.textContent = "Neues Ticket-Panel erstellen";
       saveTicketPanelButton.textContent = "Ticket-Panel erstellen";
       ticketChannelSelect.value = "";
-      ticketCategorySelect.value = "";
+      setSelectedValues(ticketCategorySelect, []);
       ticketSupportRoleSelect.value = "";
       ticketTitleInput.value = "Support Ticket";
       ticketDescriptionInput.value = "Klicke unten auf den Button, um ein Ticket zu erstellen.";
@@ -1129,7 +1148,7 @@
       ticketFormHeading.textContent = `Ticket-Panel bearbeiten (#${panel.channel_name})`;
       saveTicketPanelButton.textContent = "Ticket-Panel speichern";
       ticketChannelSelect.value = panel.channel_id || "";
-      ticketCategorySelect.value = panel.category_id || "";
+      setSelectedValues(ticketCategorySelect, panel.category_ids || (panel.category_id ? [panel.category_id] : []));
       ticketSupportRoleSelect.value = panel.support_role_id || "";
       ticketTitleInput.value = panel.title || "Support Ticket";
       ticketDescriptionInput.value = panel.description_text || "";
@@ -1266,19 +1285,19 @@
       }
     }
 
-    function renderAdminCurrentGuild() {
+    function renderSelectedAdminGuild() {
       if (!ownerPanelEnabled) {
-        adminCurrentGuildCard.innerHTML = '<div class="empty">Nur fuer den Bot-Owner sichtbar.</div>';
+        adminGuildDetail.innerHTML = '<div class="empty">Nur fuer den Bot-Owner sichtbar.</div>';
         return;
       }
-      const guildId = guildSelect.value || preferredGuildId || "";
+      const guildId = selectedAdminGuildId || adminGuildSelect.value || "";
       if (!guildId) {
-        adminCurrentGuildCard.innerHTML = '<div class="empty">Waehle zuerst einen Server im Header aus.</div>';
+        adminGuildDetail.innerHTML = '<div class="empty">Waehle oben einen Bot-Server aus.</div>';
         return;
       }
       const guild = adminGuilds.find((entry) => String(entry.id) === String(guildId));
       if (!guild) {
-        adminCurrentGuildCard.innerHTML = '<div class="empty">Fuer diesen Server wurden noch keine Admin-Daten geladen.</div>';
+        adminGuildDetail.innerHTML = '<div class="empty">Fuer diesen Server wurden keine Admin-Daten gefunden.</div>';
         return;
       }
       const featureTags = [
@@ -1292,60 +1311,7 @@
       const lastActivity = guild.last_activity
         ? `${escapeHtml(guild.last_activity.event_type || "event")} | ${escapeHtml(guild.last_activity.summary || "-")}`
         : "Noch keine letzte Aktivitaet gespeichert.";
-      adminCurrentGuildCard.innerHTML = `
-        <article class="panel-card">
-          <div class="panel-head">
-            <div>
-              <strong>${escapeHtml(guild.name)}</strong>
-              <p class="muted small">Owner: ${escapeHtml(guild.owner_name)} | ${escapeHtml(guild.member_count ?? "-")} Member</p>
-            </div>
-            <span class="panel-tag">${escapeHtml(getPremiumLabel(guild.plan))}</span>
-          </div>
-          <div class="panel-meta">
-            <div>Owner ID: <code>${escapeHtml(guild.owner_id)}</code></div>
-            <div>Guild ID: <code>${escapeHtml(guild.id)}</code></div>
-            <div>Owner-Bypass: <strong>${guild.owner_bypass_enabled ? "aktiv" : "aus"}</strong></div>
-            <div>Mod-Rollen: <strong>${escapeHtml(guild.counts?.mod_roles ?? 0)}</strong></div>
-            <div>Notifications: <strong>${escapeHtml(guild.counts?.notifications ?? 0)}</strong></div>
-            <div>Ticket-Panels: <strong>${escapeHtml(guild.counts?.ticket_panels ?? 0)} / ${escapeHtml(guild.limits?.ticket_panels ?? "-")}</strong></div>
-            <div>Offene Tickets: <strong>${escapeHtml(guild.counts?.open_tickets ?? 0)}</strong></div>
-            <div>Ticket-Limit pro User: <strong>${escapeHtml(guild.limits?.open_tickets_per_user ?? "-")}</strong></div>
-            <div>DB aktualisiert: <strong>${escapeHtml(formatDateTime(guild.db_updated_at) || "-")}</strong></div>
-          </div>
-          <div class="panel-meta" style="margin-top:12px;">
-            <div>Features: <strong>${featureTags.length ? escapeHtml(featureTags.join(" | ")) : "Keine aktiv"}</strong></div>
-            <div>Letzte Aktivitaet: <strong>${lastActivity}</strong></div>
-          </div>
-          <div class="button-row" style="margin-top:14px;">
-            <button type="button" class="ghost" data-admin-open-guild-id="${escapeHtml(guild.id)}">Im Workspace oeffnen</button>
-            <button type="button" data-admin-plan="premium" data-admin-guild-id="${escapeHtml(guild.id)}">Premium geben</button>
-            <button type="button" class="ghost" data-admin-plan="free" data-admin-guild-id="${escapeHtml(guild.id)}">Auf Free setzen</button>
-          </div>
-        </article>
-      `;
-      for (const button of adminCurrentGuildCard.querySelectorAll("[data-admin-open-guild-id]")) {
-        button.addEventListener("click", () => {
-          loadAdminGuildIntoWorkspace(button.getAttribute("data-admin-open-guild-id"));
-        });
-      }
-      for (const button of adminCurrentGuildCard.querySelectorAll("[data-admin-plan]")) {
-        button.addEventListener("click", async () => {
-          await updateAdminGuildPlan(
-            button.getAttribute("data-admin-guild-id"),
-            button.getAttribute("data-admin-plan"),
-          );
-        });
-      }
-    }
-
-    function renderAdminGuilds(guilds) {
-      adminGuilds = guilds || [];
-      renderAdminCurrentGuild();
-      if (!adminGuilds.length) {
-        adminGuildList.innerHTML = '<div class="empty">Noch keine Bot-Server fuer den Adminbereich gefunden.</div>';
-        return;
-      }
-      adminGuildList.innerHTML = adminGuilds.map((guild) => `
+      adminGuildDetail.innerHTML = `
         <article class="panel-card">
           <div class="panel-head">
             <div>
@@ -1361,21 +1327,23 @@
             <div>Offene Tickets: <strong>${escapeHtml(guild.counts?.open_tickets ?? 0)}</strong></div>
             <div>Welcome: <strong>${guild.features?.welcome ? "an" : "aus"}</strong></div>
             <div>Verification: <strong>${guild.features?.verification ? "an" : "aus"}</strong></div>
+            <div>Owner-Bypass: <strong>${guild.owner_bypass_enabled ? "aktiv" : "aus"}</strong></div>
+            <div>Mod-Rollen: <strong>${escapeHtml(guild.counts?.mod_roles ?? 0)}</strong></div>
+            <div>Ticket-Limit/User: <strong>${escapeHtml(guild.limits?.open_tickets_per_user ?? "-")}</strong></div>
+            <div>DB aktualisiert: <strong>${escapeHtml(formatDateTime(guild.db_updated_at) || "-")}</strong></div>
+          </div>
+          <div class="panel-meta" style="margin-top:12px;">
+            <div>Features: <strong>${featureTags.length ? escapeHtml(featureTags.join(" | ")) : "Keine aktiv"}</strong></div>
+            <div>Letzte Aktivitaet: <strong>${lastActivity}</strong></div>
           </div>
           <div class="button-row" style="margin-top:14px;">
-            <button type="button" class="ghost" data-admin-open-guild-id="${escapeHtml(guild.id)}">Oeffnen</button>
             <button type="button" data-admin-plan="premium" data-admin-guild-id="${escapeHtml(guild.id)}">Premium</button>
             <button type="button" class="ghost" data-admin-plan="free" data-admin-guild-id="${escapeHtml(guild.id)}">Free</button>
           </div>
         </article>
-      `).join("");
+      `;
 
-      for (const button of adminGuildList.querySelectorAll("[data-admin-open-guild-id]")) {
-        button.addEventListener("click", () => {
-          loadAdminGuildIntoWorkspace(button.getAttribute("data-admin-open-guild-id"));
-        });
-      }
-      for (const button of adminGuildList.querySelectorAll("[data-admin-plan]")) {
+      for (const button of adminGuildDetail.querySelectorAll("[data-admin-plan]")) {
         button.addEventListener("click", async () => {
           await updateAdminGuildPlan(
             button.getAttribute("data-admin-guild-id"),
@@ -1385,20 +1353,24 @@
       }
     }
 
-    function loadAdminGuildIntoWorkspace(guildId) {
-      if (!guildId) return;
-      const option = Array.from(guildSelect.options).find((entry) => String(entry.value) === String(guildId));
-      if (!option) {
-        setError("Dieser Server ist in deiner aktuellen Discord-Session nicht verfuegbar.");
+    function renderAdminGuilds(guilds) {
+      adminGuilds = guilds || [];
+      adminGuildSelect.innerHTML = '<option value="">Server auswaehlen</option>';
+      if (!adminGuilds.length) {
+        adminGuildDetail.innerHTML = '<div class="empty">Noch keine Bot-Server fuer den Adminbereich gefunden.</div>';
         return;
       }
-      guildSelect.value = guildId;
-      preferredGuildId = guildId;
-      saveState();
-      updateGateState();
-      loadOverview();
-      renderAdminCurrentGuild();
-      statusText.textContent = `${option.textContent || guildId} wurde in den Workspace geladen.`;
+      for (const guild of adminGuilds) {
+        const option = document.createElement("option");
+        option.value = String(guild.id);
+        option.textContent = guild.name;
+        adminGuildSelect.appendChild(option);
+      }
+      const preferred = selectedAdminGuildId || guildSelect.value || preferredGuildId || String(adminGuilds[0].id);
+      const exists = adminGuilds.some((entry) => String(entry.id) === String(preferred));
+      adminGuildSelect.value = exists ? String(preferred) : String(adminGuilds[0].id);
+      selectedAdminGuildId = adminGuildSelect.value;
+      renderSelectedAdminGuild();
     }
 
     function renderNotifications(subscriptions) {
@@ -1454,7 +1426,7 @@
           <div class="panel-meta">
             <div>Titel: <strong>${escapeHtml(panel.title || "Support Ticket")}</strong></div>
             <div>Beschreibung: ${escapeHtml(panel.description_text || "-")}</div>
-            <div>Kategorie: ${escapeHtml(panel.category_name || "Keine")}</div>
+            <div>Kategorien: ${escapeHtml((panel.category_names && panel.category_names.length ? panel.category_names.join(", ") : (panel.category_name || "Keine")))}</div>
             <div>Support Rolle: ${escapeHtml(panel.support_role_name || "Keine")}</div>
             <div>Welcome: ${escapeHtml(panel.welcome_message || "Keine Auto-Nachricht gesetzt.")}</div>
             <div>Message ID: <code>${escapeHtml(panel.message_id)}</code></div>
@@ -1656,7 +1628,7 @@
         jtcLobbyChannelSelect.appendChild(jtcOption);
       }
 
-      ticketCategorySelect.innerHTML = '<option value="">Keine Kategorie</option>';
+      ticketCategorySelect.innerHTML = '';
       jtcCategorySelect.innerHTML = '<option value="">Keine Kategorie</option>';
       for (const category of overview.categories || []) {
         const option = document.createElement("option");
@@ -1696,7 +1668,6 @@
       renderTicketPanels(overview.ticket_panels || []);
       renderActiveTickets(overview.active_tickets || []);
       renderClosedTickets(overview.closed_tickets || []);
-      renderAdminCurrentGuild();
       resetVerificationForm();
       resetWelcomeForm();
       resetJtcForm();
@@ -1790,8 +1761,8 @@
         ownerPanelEnabled = !!payload.guilds;
         renderAdminGuilds(payload.guilds || []);
       } catch (error) {
-        adminCurrentGuildCard.innerHTML = '<div class="empty">Admin-Uebersicht konnte nicht geladen werden.</div>';
-        adminGuildList.innerHTML = `<div class="empty">Admin-Fehler: ${escapeHtml(error.message)}</div>`;
+        adminGuildSelect.innerHTML = '<option value="">Server auswaehlen</option>';
+        adminGuildDetail.innerHTML = `<div class="empty">Admin-Fehler: ${escapeHtml(error.message)}</div>`;
       }
     }
 
@@ -2356,7 +2327,7 @@
       const wasEditing = Boolean(editingPanelId);
       const payload = {
         channel_id: ticketChannelSelect.value,
-        category_id: ticketCategorySelect.value,
+        category_ids: getSelectedValues(ticketCategorySelect),
         support_role_id: ticketSupportRoleSelect.value,
         title: ticketTitleInput.value.trim(),
         description_text: ticketDescriptionInput.value.trim(),
@@ -2509,6 +2480,7 @@
       currentPanelView = "overview";
       ownerPanelEnabled = false;
       adminGuilds = [];
+      selectedAdminGuildId = "";
       syncOwnerNavigation();
       renderSession(null);
       guildSelect.value = "";
@@ -2520,8 +2492,8 @@
       jtcCurrentCard.innerHTML = '<div class="empty">Discord-Session getrennt.</div>';
       ticketPanelsList.innerHTML = '<div class="empty">Discord-Session getrennt.</div>';
       activeTicketsList.innerHTML = '<div class="empty">Discord-Session getrennt.</div>';
-      adminCurrentGuildCard.innerHTML = '<div class="empty">Discord-Session getrennt.</div>';
-      adminGuildList.innerHTML = '<div class="empty">Discord-Session getrennt.</div>';
+      adminGuildSelect.innerHTML = '<option value="">Server auswaehlen</option>';
+      adminGuildDetail.innerHTML = '<div class="empty">Discord-Session getrennt.</div>';
       notificationCountStat.textContent = "0";
       ticketPanelCountStat.textContent = "0";
       activeTicketCountStat.textContent = "0";
@@ -2540,6 +2512,7 @@
       preferredGuildId = "";
       currentOverview = null;
       currentPanelView = "overview";
+      selectedAdminGuildId = "";
       selectedGuildIdText.textContent = "-";
       selectedGuildNameText.textContent = "Noch kein Server ausgewaehlt.";
       notificationList.innerHTML = '<div class="empty">Waehle zuerst einen Server aus.</div>';
@@ -2548,7 +2521,6 @@
       jtcCurrentCard.innerHTML = '<div class="empty">Waehle zuerst einen Server aus.</div>';
       ticketPanelsList.innerHTML = '<div class="empty">Waehle zuerst einen Server aus.</div>';
       activeTicketsList.innerHTML = '<div class="empty">Waehle zuerst einen Server aus.</div>';
-      renderAdminCurrentGuild();
       notificationCountStat.textContent = "0";
       ticketPanelCountStat.textContent = "0";
       activeTicketCountStat.textContent = "0";
@@ -2573,9 +2545,12 @@
       selectedGuildIdText.textContent = guildSelect.value || "-";
       const guild = currentSession?.guilds?.find((entry) => String(entry.id) === String(guildSelect.value));
       selectedGuildNameText.textContent = guild?.name || "Noch kein Server ausgewaehlt.";
-      renderAdminCurrentGuild();
       saveState();
       updateGateState();
+    });
+    adminGuildSelect.addEventListener("change", () => {
+      selectedAdminGuildId = adminGuildSelect.value || "";
+      renderSelectedAdminGuild();
     });
 
     function hideSiteNotice() {

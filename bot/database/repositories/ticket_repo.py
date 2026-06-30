@@ -40,6 +40,7 @@ class TicketRepository:
         title: str,
         description_text: str,
         category_id: int | None,
+        category_ids_json: str | None,
         support_role_id: int | None,
         welcome_message: str | None,
     ) -> TicketPanel:
@@ -50,6 +51,7 @@ class TicketRepository:
             title=title,
             description_text=description_text,
             category_id=category_id,
+            category_ids_json=category_ids_json,
             support_role_id=support_role_id,
             welcome_message=welcome_message,
         )
@@ -66,6 +68,7 @@ class TicketRepository:
         title: str,
         description_text: str,
         category_id: int | None,
+        category_ids_json: str | None,
         support_role_id: int | None,
         welcome_message: str | None,
     ) -> TicketPanel:
@@ -74,6 +77,7 @@ class TicketRepository:
         panel.title = title
         panel.description_text = description_text
         panel.category_id = category_id
+        panel.category_ids_json = category_ids_json
         panel.support_role_id = support_role_id
         panel.welcome_message = welcome_message
         await self.session.flush()

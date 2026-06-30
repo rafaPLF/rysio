@@ -111,9 +111,36 @@ def _display_name_for_member(member: discord.Member | None, fallback_id: int | N
     return "Unbekannt"
 
 
+def _parse_ticket_panel_category_ids(panel) -> list[int]:
+    if getattr(panel, "category_ids_json", None):
+        try:
+            raw_values = json.loads(panel.category_ids_json)
+        except json.JSONDecodeError:
+            raw_values = []
+        if isinstance(raw_values, list):
+            parsed: list[int] = []
+            for value in raw_values:
+                try:
+                    parsed.append(int(value))
+                except (TypeError, ValueError):
+                    continue
+            if parsed:
+                return parsed
+    if getattr(panel, "category_id", None):
+        return [int(panel.category_id)]
+    return []
+
+
 def _serialize_ticket_panel(panel, guild: discord.Guild) -> dict[str, Any]:
     channel = guild.get_channel(panel.channel_id)
-    category = guild.get_channel(panel.category_id) if panel.category_id else None
+    category_ids = _parse_ticket_panel_category_ids(panel)
+    categories = [
+        category
+        for category_id in category_ids
+        for category in [guild.get_channel(category_id)]
+        if isinstance(category, discord.CategoryChannel)
+    ]
+    category = categories[0] if categories else None
     support_role = guild.get_role(panel.support_role_id) if panel.support_role_id else None
     return {
         "id": panel.id,
@@ -124,6 +151,8 @@ def _serialize_ticket_panel(panel, guild: discord.Guild) -> dict[str, Any]:
         "description_text": panel.description_text,
         "category_id": str(panel.category_id) if panel.category_id else None,
         "category_name": category.name if isinstance(category, discord.CategoryChannel) else None,
+        "category_ids": [str(category_id) for category_id in category_ids],
+        "category_names": [category.name for category in categories],
         "support_role_id": str(panel.support_role_id) if panel.support_role_id else None,
         "support_role_name": support_role.name if support_role else None,
         "welcome_message": panel.welcome_message or "",
@@ -308,13 +337,26 @@ def _serialize_admin_guild(
     }
 
 
-def _build_ticket_panel_embed(bot: discord.Client, *, language: str, title: str, description_text: str) -> discord.Embed:
+def _build_ticket_panel_embed(
+    bot: discord.Client,
+    *,
+    language: str,
+    title: str,
+    description_text: str,
+    show_category_hint: bool = False,
+) -> discord.Embed:
     embed = discord.Embed(title=title, description=description_text, color=discord.Color.blurple())
     embed.add_field(
         name=bot.localization.translate("tickets.panel_field_name", language=language),  # type: ignore[attr-defined]
         value=bot.localization.translate("tickets.panel_field_value", language=language),  # type: ignore[attr-defined]
         inline=False,
     )
+    if show_category_hint:
+        embed.add_field(
+            name=bot.localization.translate("tickets.panel_category_field_name", language=language),  # type: ignore[attr-defined]
+            value=bot.localization.translate("tickets.panel_category_field_value", language=language),  # type: ignore[attr-defined]
+            inline=False,
+        )
     return embed
 
 
@@ -1047,6 +1089,39 @@ async def check_guild_notifications(request: web.Request) -> web.Response:
     return web.json_response({"checked": True, "processed": processed})
 
 
+def _parse_ticket_panel_category_payload(
+    payload: dict[str, Any],
+    guild: discord.Guild,
+) -> tuple[list[int], discord.CategoryChannel | None] | web.Response:
+    category_ids: list[int] = []
+    raw_values = payload.get("category_ids")
+
+    if isinstance(raw_values, list):
+        iterable = raw_values
+    else:
+        iterable = []
+        category_id_raw = str(payload.get("category_id", "")).strip()
+        if category_id_raw:
+            iterable = [category_id_raw]
+
+    for raw_value in iterable:
+        raw_text = str(raw_value).strip()
+        if not raw_text:
+            continue
+        try:
+            category_id = int(raw_text)
+        except ValueError:
+            return web.json_response({"error": "invalid_category_id"}, status=400)
+        category = guild.get_channel(category_id)
+        if not isinstance(category, discord.CategoryChannel):
+            return web.json_response({"error": "category_not_found"}, status=404)
+        if category_id not in category_ids:
+            category_ids.append(category_id)
+
+    primary_category = guild.get_channel(category_ids[0]) if category_ids else None
+    return category_ids, primary_category if isinstance(primary_category, discord.CategoryChannel) else None
+
+
 async def create_ticket_panel(request: web.Request) -> web.Response:
     guild = await _get_authorized_guild(request)
     if guild is None:
@@ -1066,7 +1141,6 @@ async def create_ticket_panel(request: web.Request) -> web.Response:
     channel_id_raw = str(payload.get("channel_id", "")).strip()
     title = str(payload.get("title", "")).strip()
     description_text = str(payload.get("description_text", "")).strip()
-    category_id_raw = str(payload.get("category_id", "")).strip()
     support_role_id_raw = str(payload.get("support_role_id", "")).strip()
     welcome_message = str(payload.get("welcome_message", "")).strip()
 
@@ -1082,15 +1156,10 @@ async def create_ticket_panel(request: web.Request) -> web.Response:
     if not isinstance(channel, discord.TextChannel):
         return web.json_response({"error": "channel_not_found"}, status=404)
 
-    category = None
-    if category_id_raw:
-        try:
-            category_id = int(category_id_raw)
-        except ValueError:
-            return web.json_response({"error": "invalid_category_id"}, status=400)
-        category = guild.get_channel(category_id)
-        if not isinstance(category, discord.CategoryChannel):
-            return web.json_response({"error": "category_not_found"}, status=404)
+    category_result = _parse_ticket_panel_category_payload(payload, guild)
+    if isinstance(category_result, web.Response):
+        return category_result
+    category_ids, category = category_result
 
     support_role = None
     if support_role_id_raw:
@@ -1111,9 +1180,6 @@ async def create_ticket_panel(request: web.Request) -> web.Response:
         return web.json_response({"error": "missing_channel_permissions"}, status=400)
 
     language = await bot.guild_config.get_language(bot.database, guild.id)  # type: ignore[attr-defined]
-    embed = _build_ticket_panel_embed(bot, language=language, title=title, description_text=description_text)
-    message = await channel.send(embed=embed, view=TicketCreateView())
-
     database: DatabaseSessionManager = request.app["database"]
     async with database.session() as session:
         guild_repo = GuildRepository(session)
@@ -1121,6 +1187,14 @@ async def create_ticket_panel(request: web.Request) -> web.Response:
         await guild_repo.ensure_guild(guild.id, bot.guild_config.get_default_language())  # type: ignore[attr-defined]
         settings = await guild_repo.ensure_settings(guild.id)
         settings.ticket_enabled = True
+        embed = _build_ticket_panel_embed(
+            bot,
+            language=language,
+            title=title,
+            description_text=description_text,
+            show_category_hint=len(category_ids) > 1,
+        )
+        message = await channel.send(embed=embed, view=TicketCreateView())
         panel = await ticket_repo.create_panel(
             guild_id=guild.id,
             channel_id=channel.id,
@@ -1128,6 +1202,7 @@ async def create_ticket_panel(request: web.Request) -> web.Response:
             title=title,
             description_text=description_text,
             category_id=category.id if category else None,
+            category_ids_json=json.dumps(category_ids) if category_ids else None,
             support_role_id=support_role.id if support_role else None,
             welcome_message=welcome_message or None,
         )
@@ -1326,7 +1401,6 @@ async def update_ticket_panel(request: web.Request) -> web.Response:
     channel_id_raw = str(payload.get("channel_id", "")).strip()
     title = str(payload.get("title", "")).strip()
     description_text = str(payload.get("description_text", "")).strip()
-    category_id_raw = str(payload.get("category_id", "")).strip()
     support_role_id_raw = str(payload.get("support_role_id", "")).strip()
     welcome_message = str(payload.get("welcome_message", "")).strip()
 
@@ -1342,15 +1416,10 @@ async def update_ticket_panel(request: web.Request) -> web.Response:
     if not isinstance(channel, discord.TextChannel):
         return web.json_response({"error": "channel_not_found"}, status=404)
 
-    category = None
-    if category_id_raw:
-        try:
-            category_id = int(category_id_raw)
-        except ValueError:
-            return web.json_response({"error": "invalid_category_id"}, status=400)
-        category = guild.get_channel(category_id)
-        if not isinstance(category, discord.CategoryChannel):
-            return web.json_response({"error": "category_not_found"}, status=404)
+    category_result = _parse_ticket_panel_category_payload(payload, guild)
+    if isinstance(category_result, web.Response):
+        return category_result
+    category_ids, category = category_result
 
     support_role = None
     if support_role_id_raw:
@@ -1377,7 +1446,13 @@ async def update_ticket_panel(request: web.Request) -> web.Response:
             return web.json_response({"error": "panel_not_found"}, status=404)
 
         language = await bot.guild_config.get_language(bot.database, guild.id)  # type: ignore[attr-defined]
-        embed = _build_ticket_panel_embed(bot, language=language, title=title, description_text=description_text)
+        embed = _build_ticket_panel_embed(
+            bot,
+            language=language,
+            title=title,
+            description_text=description_text,
+            show_category_hint=len(category_ids) > 1,
+        )
 
         final_message_id = panel.message_id
         if panel.channel_id != channel.id:
@@ -1411,6 +1486,7 @@ async def update_ticket_panel(request: web.Request) -> web.Response:
             title=title,
             description_text=description_text,
             category_id=category.id if category else None,
+            category_ids_json=json.dumps(category_ids) if category_ids else None,
             support_role_id=support_role.id if support_role else None,
             welcome_message=welcome_message or None,
         )

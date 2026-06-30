@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import re
 import unicodedata
 
@@ -15,6 +16,165 @@ def _slugify_ticket_username(name: str) -> str:
     normalized = unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode("ascii")
     collapsed = re.sub(r"[^a-zA-Z0-9]+", "-", normalized.lower()).strip("-")
     return collapsed or "user"
+
+
+def _get_panel_category_ids(panel) -> list[int]:
+    if getattr(panel, "category_ids_json", None):
+        try:
+            raw_values = json.loads(panel.category_ids_json)
+        except json.JSONDecodeError:
+            raw_values = []
+        if isinstance(raw_values, list):
+            parsed: list[int] = []
+            for value in raw_values:
+                try:
+                    parsed.append(int(value))
+                except (TypeError, ValueError):
+                    continue
+            if parsed:
+                return parsed
+    if getattr(panel, "category_id", None):
+        return [int(panel.category_id)]
+    return []
+
+
+def _resolve_panel_categories(guild: discord.Guild, panel) -> list[discord.CategoryChannel]:
+    categories: list[discord.CategoryChannel] = []
+    for category_id in _get_panel_category_ids(panel):
+        category = guild.get_channel(category_id)
+        if isinstance(category, discord.CategoryChannel):
+            categories.append(category)
+    return categories
+
+
+async def _create_ticket_from_panel(
+    interaction: discord.Interaction,
+    panel,
+    *,
+    category: discord.CategoryChannel | None = None,
+) -> tuple[discord.TextChannel | None, str | None]:
+    from bot.database.repositories.ticket_repo import TicketRepository
+
+    if interaction.guild is None:
+        return None, "Das geht nur in einem Server."
+
+    language = await interaction.client.guild_config.get_language(  # type: ignore[attr-defined]
+        interaction.client.database,
+        interaction.guild.id,
+    )
+    support_role = interaction.guild.get_role(panel.support_role_id) if panel.support_role_id else None
+    bot_member = interaction.guild.me or interaction.guild.get_member(interaction.client.user.id)  # type: ignore[attr-defined]
+    if bot_member is None:
+        return None, "Bot-Mitglied konnte nicht gefunden werden."
+
+    overwrites: dict[discord.abc.Snowflake, discord.PermissionOverwrite] = {
+        interaction.guild.default_role: discord.PermissionOverwrite(view_channel=False),
+        interaction.user: discord.PermissionOverwrite(
+            view_channel=True,
+            send_messages=True,
+            read_message_history=True,
+        ),
+        bot_member: discord.PermissionOverwrite(
+            view_channel=True,
+            send_messages=True,
+            manage_channels=True,
+            manage_messages=True,
+        ),
+    }
+    if support_role is not None:
+        overwrites[support_role] = discord.PermissionOverwrite(
+            view_channel=True,
+            send_messages=True,
+            read_message_history=True,
+        )
+
+    async with interaction.client.database.session() as session:  # type: ignore[attr-defined]
+        repo = TicketRepository(session)
+        open_ticket_count = await repo.count_open_tickets_for_user(interaction.guild.id, interaction.user.id)
+        if open_ticket_count >= MAX_OPEN_TICKETS_PER_USER:
+            message = interaction.client.localization.translate(  # type: ignore[attr-defined]
+                "tickets.already_open",
+                language=language,
+                limit=MAX_OPEN_TICKETS_PER_USER,
+            )
+            return None, message
+
+        ticket_number = open_ticket_count + 1
+        username_slug = _slugify_ticket_username(interaction.user.name)
+        channel_name = f"ticket-{username_slug}-{ticket_number}"[:90].rstrip("-")
+        ticket_channel = await interaction.guild.create_text_channel(
+            name=channel_name,
+            category=category,
+            overwrites=overwrites,
+            reason=f"Ticket for {interaction.user}",
+        )
+        ticket = await repo.create_ticket(interaction.guild.id, ticket_channel.id, interaction.user.id, panel.id if panel else None)
+
+    ticket_service = interaction.client.tickets  # type: ignore[attr-defined]
+    content = panel.welcome_message if panel and panel.welcome_message else interaction.client.localization.translate(  # type: ignore[attr-defined]
+        "tickets.created_channel_message",
+        language=language,
+        user=interaction.user.mention,
+    )
+    await ticket_channel.send(
+        content,
+        embed=ticket_service.build_ticket_status_embed(ticket),
+        view=TicketManageView(),
+    )
+    return ticket_channel, None
+
+
+class TicketCategorySelect(discord.ui.Select):
+    def __init__(self, panel, categories: list[discord.CategoryChannel]) -> None:
+        self.panel = panel
+        options = [
+            discord.SelectOption(
+                label=category.name[:100],
+                value=str(category.id),
+                description=f"Ticket in {category.name} erstellen"[:100],
+            )
+            for category in categories[:25]
+        ]
+        super().__init__(
+            placeholder="Kategorie waehlen",
+            min_values=1,
+            max_values=1,
+            options=options,
+            custom_id="tickets:category_select",
+        )
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        if interaction.guild is None:
+            await interaction.response.send_message("Das geht nur in einem Server.", ephemeral=True)
+            return
+        language = await interaction.client.guild_config.get_language(  # type: ignore[attr-defined]
+            interaction.client.database,
+            interaction.guild.id,
+        )
+        category = interaction.guild.get_channel(int(self.values[0]))
+        if not isinstance(category, discord.CategoryChannel):
+            await interaction.response.send_message(
+                interaction.client.localization.translate("tickets.category_not_found", language=language),  # type: ignore[attr-defined]
+                ephemeral=True,
+            )
+            return
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        ticket_channel, error = await _create_ticket_from_panel(interaction, self.panel, category=category)
+        if error:
+            await interaction.followup.send(error, ephemeral=True)
+            return
+        response = interaction.client.localization.translate(  # type: ignore[attr-defined]
+            "tickets.created_success",
+            language=language,
+            channel=ticket_channel.mention,
+        )
+        await interaction.followup.send(response, ephemeral=True)
+
+
+class TicketCategorySelectView(discord.ui.View):
+    def __init__(self, panel, categories: list[discord.CategoryChannel]) -> None:
+        super().__init__(timeout=180)
+        self.add_item(TicketCategorySelect(panel, categories))
 
 
 class TicketCreateView(discord.ui.View):
@@ -53,66 +213,31 @@ class TicketCreateView(discord.ui.View):
             await interaction.response.send_message(message, ephemeral=True)
             return
 
-        category = interaction.guild.get_channel(panel.category_id) if panel.category_id else None
-        support_role = interaction.guild.get_role(panel.support_role_id) if panel.support_role_id else None
-        bot_member = interaction.guild.me or interaction.guild.get_member(interaction.client.user.id)  # type: ignore[attr-defined]
-        if bot_member is None:
-            await interaction.response.send_message("Bot-Mitglied konnte nicht gefunden werden.", ephemeral=True)
+        categories = _resolve_panel_categories(interaction.guild, panel)
+        if len(categories) > 1:
+            await interaction.response.send_message(
+                interaction.client.localization.translate("tickets.category_prompt", language=language),  # type: ignore[attr-defined]
+                view=TicketCategorySelectView(panel, categories),
+                ephemeral=True,
+            )
             return
 
-        overwrites: dict[discord.abc.Snowflake, discord.PermissionOverwrite] = {
-            interaction.guild.default_role: discord.PermissionOverwrite(view_channel=False),
-            interaction.user: discord.PermissionOverwrite(
-                view_channel=True,
-                send_messages=True,
-                read_message_history=True,
-            ),
-            bot_member: discord.PermissionOverwrite(
-                view_channel=True,
-                send_messages=True,
-                manage_channels=True,
-                manage_messages=True,
-            ),
-        }
-        if support_role is not None:
-            overwrites[support_role] = discord.PermissionOverwrite(
-                view_channel=True,
-                send_messages=True,
-                read_message_history=True,
-            )
-
-        ticket_number = open_ticket_count + 1
-        username_slug = _slugify_ticket_username(interaction.user.name)
-        channel_name = f"ticket-{username_slug}-{ticket_number}"[:90].rstrip("-")
-        ticket_channel = await interaction.guild.create_text_channel(
-            name=channel_name,
-            category=category if isinstance(category, discord.CategoryChannel) else None,
-            overwrites=overwrites,
-            reason=f"Ticket for {interaction.user}",
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        ticket_channel, error = await _create_ticket_from_panel(
+            interaction,
+            panel,
+            category=categories[0] if categories else None,
         )
-
-        async with interaction.client.database.session() as session:  # type: ignore[attr-defined]
-            repo = TicketRepository(session)
-            ticket = await repo.create_ticket(interaction.guild.id, ticket_channel.id, interaction.user.id, panel.id if panel else None)
-
-        ticket_service = interaction.client.tickets  # type: ignore[attr-defined]
-        content = panel.welcome_message if panel and panel.welcome_message else interaction.client.localization.translate(  # type: ignore[attr-defined]
-            "tickets.created_channel_message",
-            language=language,
-            user=interaction.user.mention,
-        )
-        await ticket_channel.send(
-            content,
-            embed=ticket_service.build_ticket_status_embed(ticket),
-            view=TicketManageView(),
-        )
+        if error:
+            await interaction.followup.send(error, ephemeral=True)
+            return
 
         response = interaction.client.localization.translate(  # type: ignore[attr-defined]
             "tickets.created_success",
             language=language,
             channel=ticket_channel.mention,
         )
-        await interaction.response.send_message(response, ephemeral=True)
+        await interaction.followup.send(response, ephemeral=True)
 
 
 class TicketManageView(discord.ui.View):

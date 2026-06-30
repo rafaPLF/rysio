@@ -114,6 +114,7 @@ class TicketsGroup(app_commands.Group):
                 title=title,
                 description_text=description_text,
                 category_id=category.id if category else None,
+                category_ids_json=f"[{category.id}]" if category else None,
                 support_role_id=support_role.id if support_role else None,
                 welcome_message=welcome_message.strip() if welcome_message else None,
             )
