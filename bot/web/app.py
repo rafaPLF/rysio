@@ -16,10 +16,10 @@ from bot.database.repositories.ticket_repo import TicketRepository
 from bot.database.repositories.verification_repo import VerificationRepository
 from bot.database.session import DatabaseSessionManager
 from bot.modules.notifications.service import NotificationService
-from bot.modules.tickets.views import TicketCreateView
+from bot.modules.tickets.views import MAX_OPEN_TICKETS_PER_USER, TicketCreateView
 from bot.modules.verification.views import VerificationView
 from bot.modules.welcome.service import send_welcome_message
-from bot.utils.access import has_owner_access
+from bot.utils.access import has_owner_access, has_owner_bypass
 from bot.web.oauth import (
     build_callback_redirect,
     build_login_url,
@@ -218,7 +218,52 @@ def _serialize_join_to_create_settings(settings, guild: discord.Guild) -> dict[s
     }
 
 
-def _serialize_admin_guild(guild: discord.Guild, *, owner_name: str, plan: str) -> dict[str, Any]:
+def _serialize_admin_guild(
+    guild: discord.Guild,
+    *,
+    owner_name: str,
+    plan: str,
+    owner_bypass_enabled: bool,
+    settings=None,
+    notification_count: int = 0,
+    panel_count: int = 0,
+    open_ticket_count: int = 0,
+    last_activity=None,
+    guild_record=None,
+) -> dict[str, Any]:
+    mod_role_count = 0
+    if settings is not None and settings.mod_role_ids_json:
+        try:
+            raw_mod_roles = json.loads(settings.mod_role_ids_json)
+            if isinstance(raw_mod_roles, list):
+                mod_role_count = len(raw_mod_roles)
+        except json.JSONDecodeError:
+            mod_role_count = 0
+
+    verification_active = bool(
+        settings is not None
+        and settings.verification_enabled
+    )
+    welcome_active = bool(
+        settings is not None
+        and settings.welcome_enabled
+        and settings.welcome_channel_id
+    )
+    join_to_create_active = bool(
+        settings is not None
+        and settings.join_to_create_enabled
+        and settings.join_to_create_channel_id
+    )
+    logs_active = bool(
+        settings is not None
+        and settings.logs_enabled
+        and settings.logs_channel_id
+    )
+    tickets_active = bool(
+        settings is not None
+        and settings.ticket_enabled
+    ) or panel_count > 0 or open_ticket_count > 0
+
     return {
         "id": str(guild.id),
         "name": guild.name,
@@ -228,6 +273,38 @@ def _serialize_admin_guild(guild: discord.Guild, *, owner_name: str, plan: str) 
         "owner_name": owner_name,
         "plan": plan,
         "premium_active": plan != "free",
+        "owner_bypass_enabled": owner_bypass_enabled,
+        "limits": {
+            "ticket_panels": 1 if plan == "free" else 5,
+            "open_tickets_per_user": MAX_OPEN_TICKETS_PER_USER,
+        },
+        "counts": {
+            "notifications": notification_count,
+            "ticket_panels": panel_count,
+            "open_tickets": open_ticket_count,
+            "mod_roles": mod_role_count,
+        },
+        "features": {
+            "tickets": tickets_active,
+            "verification": verification_active,
+            "welcome": welcome_active,
+            "join_to_create": join_to_create_active,
+            "notifications": notification_count > 0,
+            "logs": logs_active,
+        },
+        "channels": {
+            "info_channel_id": str(settings.info_channel_id) if settings and settings.info_channel_id else None,
+            "logs_channel_id": str(settings.logs_channel_id) if settings and settings.logs_channel_id else None,
+            "welcome_channel_id": str(settings.welcome_channel_id) if settings and settings.welcome_channel_id else None,
+            "join_to_create_channel_id": str(settings.join_to_create_channel_id) if settings and settings.join_to_create_channel_id else None,
+        },
+        "last_activity": {
+            "event_type": last_activity.event_type,
+            "summary": last_activity.summary,
+            "created_at": last_activity.created_at.isoformat() if last_activity and last_activity.created_at else None,
+        } if last_activity is not None else None,
+        "db_created_at": guild_record.created_at.isoformat() if guild_record and guild_record.created_at else None,
+        "db_updated_at": guild_record.updated_at.isoformat() if guild_record and guild_record.updated_at else None,
     }
 
 
@@ -1589,15 +1666,45 @@ async def get_admin_guilds(request: web.Request) -> web.Response:
 
     database: DatabaseSessionManager = request.app["database"]
     guild_payload: list[dict[str, Any]] = []
+    user_id = _session_user_id(request) or 0
     async with database.session() as session:
         premium_repo = PremiumRepository(session)
+        guild_repo = GuildRepository(session)
+        notification_repo = NotificationSubscriptionRepository(session)
+        ticket_repo = TicketRepository(session)
+        audit_log_repo = AuditLogRepository(session)
         for guild in sorted(bot.guilds, key=lambda entry: entry.name.lower()):
             owner_member = guild.get_member(guild.owner_id)
             owner_name = owner_member.display_name if owner_member is not None else f"User {guild.owner_id}"
             plan = await premium_repo.get_active_plan(guild.id)
-            guild_payload.append(_serialize_admin_guild(guild, owner_name=owner_name, plan=plan))
+            settings = await guild_repo.get_settings(guild.id)
+            guild_record = await guild_repo.get_guild(guild.id)
+            notifications = await notification_repo.list_for_guild(guild.id)
+            panel_count = await ticket_repo.count_panels_for_guild(guild.id)
+            open_tickets = await ticket_repo.get_active_tickets_for_guild(guild.id)
+            last_entries = await audit_log_repo.list_for_guild(guild.id, limit=1)
+            last_activity = last_entries[0] if last_entries else None
+            guild_payload.append(
+                _serialize_admin_guild(
+                    guild,
+                    owner_name=owner_name,
+                    plan=plan,
+                    owner_bypass_enabled=has_owner_bypass(bot, user_id),
+                    settings=settings,
+                    notification_count=len(notifications),
+                    panel_count=panel_count,
+                    open_ticket_count=len(open_tickets),
+                    last_activity=last_activity,
+                    guild_record=guild_record,
+                )
+            )
 
-    return web.json_response({"guilds": guild_payload})
+    return web.json_response(
+        {
+            "owner_bypass_enabled": has_owner_bypass(bot, user_id),
+            "guilds": guild_payload,
+        }
+    )
 
 
 async def update_admin_guild_premium(request: web.Request) -> web.Response:
@@ -1624,15 +1731,37 @@ async def update_admin_guild_premium(request: web.Request) -> web.Response:
     database: DatabaseSessionManager = request.app["database"]
     async with database.session() as session:
         premium_repo = PremiumRepository(session)
+        guild_repo = GuildRepository(session)
+        notification_repo = NotificationSubscriptionRepository(session)
+        ticket_repo = TicketRepository(session)
+        audit_log_repo = AuditLogRepository(session)
         await premium_repo.set_plan(guild.id, plan, active=(plan != "free"))
         current_plan = await premium_repo.get_active_plan(guild.id)
+        settings = await guild_repo.get_settings(guild.id)
+        guild_record = await guild_repo.get_guild(guild.id)
+        notifications = await notification_repo.list_for_guild(guild.id)
+        panel_count = await ticket_repo.count_panels_for_guild(guild.id)
+        open_tickets = await ticket_repo.get_active_tickets_for_guild(guild.id)
+        last_entries = await audit_log_repo.list_for_guild(guild.id, limit=1)
+        last_activity = last_entries[0] if last_entries else None
 
     owner_member = guild.get_member(guild.owner_id)
     owner_name = owner_member.display_name if owner_member is not None else f"User {guild.owner_id}"
     return web.json_response(
         {
             "updated": True,
-            "guild": _serialize_admin_guild(guild, owner_name=owner_name, plan=current_plan),
+            "guild": _serialize_admin_guild(
+                guild,
+                owner_name=owner_name,
+                plan=current_plan,
+                owner_bypass_enabled=has_owner_bypass(bot, _session_user_id(request) or 0),
+                settings=settings,
+                notification_count=len(notifications),
+                panel_count=panel_count,
+                open_ticket_count=len(open_tickets),
+                last_activity=last_activity,
+                guild_record=guild_record,
+            ),
         }
     )
 

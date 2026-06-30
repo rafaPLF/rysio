@@ -895,6 +895,13 @@
       return plan === "premium" ? "Premium" : "Free";
     }
 
+    function formatDateTime(value) {
+      if (!value) return "";
+      const parsed = new Date(value);
+      if (Number.isNaN(parsed.getTime())) return String(value);
+      return parsed.toLocaleString("de-DE");
+    }
+
     function syncOwnerNavigation() {
       adminNavButton.classList.toggle("hidden", !ownerPanelEnabled);
       if (!ownerPanelEnabled && currentPanelView === "admin") {
@@ -1274,23 +1281,53 @@
         adminCurrentGuildCard.innerHTML = '<div class="empty">Fuer diesen Server wurden noch keine Admin-Daten geladen.</div>';
         return;
       }
+      const featureTags = [
+        guild.features?.tickets ? "Tickets" : null,
+        guild.features?.verification ? "Verification" : null,
+        guild.features?.welcome ? "Welcome" : null,
+        guild.features?.join_to_create ? "Join to Create" : null,
+        guild.features?.notifications ? "Notifications" : null,
+        guild.features?.logs ? "Logs" : null,
+      ].filter(Boolean);
+      const lastActivity = guild.last_activity
+        ? `${escapeHtml(guild.last_activity.event_type || "event")} | ${escapeHtml(guild.last_activity.summary || "-")}`
+        : "Noch keine letzte Aktivitaet gespeichert.";
       adminCurrentGuildCard.innerHTML = `
         <article class="panel-card">
           <div class="panel-head">
-            <strong>${escapeHtml(guild.name)}</strong>
+            <div>
+              <strong>${escapeHtml(guild.name)}</strong>
+              <p class="muted small">Owner: ${escapeHtml(guild.owner_name)} | ${escapeHtml(guild.member_count ?? "-")} Member</p>
+            </div>
             <span class="panel-tag">${escapeHtml(getPremiumLabel(guild.plan))}</span>
           </div>
           <div class="panel-meta">
-            <div>Owner: <strong>${escapeHtml(guild.owner_name)}</strong></div>
             <div>Owner ID: <code>${escapeHtml(guild.owner_id)}</code></div>
-            <div>Members: <strong>${escapeHtml(guild.member_count ?? "-")}</strong></div>
+            <div>Guild ID: <code>${escapeHtml(guild.id)}</code></div>
+            <div>Owner-Bypass: <strong>${guild.owner_bypass_enabled ? "aktiv" : "aus"}</strong></div>
+            <div>Mod-Rollen: <strong>${escapeHtml(guild.counts?.mod_roles ?? 0)}</strong></div>
+            <div>Notifications: <strong>${escapeHtml(guild.counts?.notifications ?? 0)}</strong></div>
+            <div>Ticket-Panels: <strong>${escapeHtml(guild.counts?.ticket_panels ?? 0)} / ${escapeHtml(guild.limits?.ticket_panels ?? "-")}</strong></div>
+            <div>Offene Tickets: <strong>${escapeHtml(guild.counts?.open_tickets ?? 0)}</strong></div>
+            <div>Ticket-Limit pro User: <strong>${escapeHtml(guild.limits?.open_tickets_per_user ?? "-")}</strong></div>
+            <div>DB aktualisiert: <strong>${escapeHtml(formatDateTime(guild.db_updated_at) || "-")}</strong></div>
+          </div>
+          <div class="panel-meta" style="margin-top:12px;">
+            <div>Features: <strong>${featureTags.length ? escapeHtml(featureTags.join(" | ")) : "Keine aktiv"}</strong></div>
+            <div>Letzte Aktivitaet: <strong>${lastActivity}</strong></div>
           </div>
           <div class="button-row" style="margin-top:14px;">
+            <button type="button" class="ghost" data-admin-open-guild-id="${escapeHtml(guild.id)}">Im Workspace oeffnen</button>
             <button type="button" data-admin-plan="premium" data-admin-guild-id="${escapeHtml(guild.id)}">Premium geben</button>
             <button type="button" class="ghost" data-admin-plan="free" data-admin-guild-id="${escapeHtml(guild.id)}">Auf Free setzen</button>
           </div>
         </article>
       `;
+      for (const button of adminCurrentGuildCard.querySelectorAll("[data-admin-open-guild-id]")) {
+        button.addEventListener("click", () => {
+          loadAdminGuildIntoWorkspace(button.getAttribute("data-admin-open-guild-id"));
+        });
+      }
       for (const button of adminCurrentGuildCard.querySelectorAll("[data-admin-plan]")) {
         button.addEventListener("click", async () => {
           await updateAdminGuildPlan(
@@ -1313,21 +1350,31 @@
           <div class="panel-head">
             <div>
               <strong>${escapeHtml(guild.name)}</strong>
-              <p class="muted small">Owner: ${escapeHtml(guild.owner_name)} | ${escapeHtml(guild.member_count ?? "-")} Member</p>
+              <p class="muted small">Owner: ${escapeHtml(guild.owner_name)} | ${escapeHtml(guild.member_count ?? "-")} Member | ${escapeHtml(guild.counts?.notifications ?? 0)} Notifications</p>
             </div>
             <span class="panel-tag">${escapeHtml(getPremiumLabel(guild.plan))}</span>
           </div>
           <div class="panel-meta">
             <div>Guild ID: <code>${escapeHtml(guild.id)}</code></div>
             <div>Owner ID: <code>${escapeHtml(guild.owner_id)}</code></div>
+            <div>Panels: <strong>${escapeHtml(guild.counts?.ticket_panels ?? 0)} / ${escapeHtml(guild.limits?.ticket_panels ?? "-")}</strong></div>
+            <div>Offene Tickets: <strong>${escapeHtml(guild.counts?.open_tickets ?? 0)}</strong></div>
+            <div>Welcome: <strong>${guild.features?.welcome ? "an" : "aus"}</strong></div>
+            <div>Verification: <strong>${guild.features?.verification ? "an" : "aus"}</strong></div>
           </div>
           <div class="button-row" style="margin-top:14px;">
+            <button type="button" class="ghost" data-admin-open-guild-id="${escapeHtml(guild.id)}">Oeffnen</button>
             <button type="button" data-admin-plan="premium" data-admin-guild-id="${escapeHtml(guild.id)}">Premium</button>
             <button type="button" class="ghost" data-admin-plan="free" data-admin-guild-id="${escapeHtml(guild.id)}">Free</button>
           </div>
         </article>
       `).join("");
 
+      for (const button of adminGuildList.querySelectorAll("[data-admin-open-guild-id]")) {
+        button.addEventListener("click", () => {
+          loadAdminGuildIntoWorkspace(button.getAttribute("data-admin-open-guild-id"));
+        });
+      }
       for (const button of adminGuildList.querySelectorAll("[data-admin-plan]")) {
         button.addEventListener("click", async () => {
           await updateAdminGuildPlan(
@@ -1336,6 +1383,22 @@
           );
         });
       }
+    }
+
+    function loadAdminGuildIntoWorkspace(guildId) {
+      if (!guildId) return;
+      const option = Array.from(guildSelect.options).find((entry) => String(entry.value) === String(guildId));
+      if (!option) {
+        setError("Dieser Server ist in deiner aktuellen Discord-Session nicht verfuegbar.");
+        return;
+      }
+      guildSelect.value = guildId;
+      preferredGuildId = guildId;
+      saveState();
+      updateGateState();
+      loadOverview();
+      renderAdminCurrentGuild();
+      statusText.textContent = `${option.textContent || guildId} wurde in den Workspace geladen.`;
     }
 
     function renderNotifications(subscriptions) {
@@ -1724,6 +1787,7 @@
         });
         const payload = await response.json();
         if (!response.ok) throw new Error(payload.error || `HTTP ${response.status}`);
+        ownerPanelEnabled = !!payload.guilds;
         renderAdminGuilds(payload.guilds || []);
       } catch (error) {
         adminCurrentGuildCard.innerHTML = '<div class="empty">Admin-Uebersicht konnte nicht geladen werden.</div>';
