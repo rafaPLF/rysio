@@ -105,6 +105,19 @@ class TicketRepository:
         result = await self.session.execute(query)
         return list(result.scalars().all())
 
+    async def get_recent_closed_tickets_for_guild(self, guild_id: int, limit: int = 25) -> list[Ticket]:
+        query = (
+            select(Ticket)
+            .where(
+                Ticket.guild_id == guild_id,
+                Ticket.status == "closed",
+            )
+            .order_by(Ticket.closed_at.desc(), Ticket.id.desc())
+            .limit(limit)
+        )
+        result = await self.session.execute(query)
+        return list(result.scalars().all())
+
     async def get_open_tickets_for_user(self, guild_id: int, user_id: int) -> list[Ticket]:
         query = select(Ticket).where(
             Ticket.guild_id == guild_id,

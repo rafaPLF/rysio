@@ -256,7 +256,6 @@
     <header class="topbar">
       <div class="brand">
         <div class="brand-mark">RYSIO PANEL</div>
-        <div class="brand-sub">Erst Discord Login, dann Server Auswahl, danach erst der eigentliche Workspace.</div>
       </div>
       <div class="top-actions">
         <div class="session-summary">
@@ -294,9 +293,6 @@
             <button class="nav-button hidden" type="button" data-nav-view="admin" id="adminNavButton"><span>Admin</span><span>Owner</span></button>
             <button class="nav-button" type="button" data-nav-view="connection"><span>Verbindung</span><span>API</span></button>
           </div>
-        </section>
-        <section class="nav-hint">
-          Links waehlt man nur den Bereich. In der Mitte wird immer genau der aktive Workspace gezeigt.
         </section>
       </aside>
       <section class="content-shell">
@@ -617,6 +613,18 @@
             <div class="empty">Noch kein Server geladen.</div>
           </div>
         </section>
+        <section class="card panel-view hidden" data-panel-view="tickets">
+          <div class="ticket-head">
+            <div>
+              <h2>Ticket-Log / Transcripts</h2>
+              <p class="muted">Geschlossene Tickets bleiben hier sichtbar, damit man spaeter direkt auf die gespeicherten Transcripts zugreifen kann.</p>
+            </div>
+            <span class="ticket-tag">History</span>
+          </div>
+          <div id="closedTicketsList" class="ticket-list">
+            <div class="empty">Noch kein Server geladen.</div>
+          </div>
+        </section>
         <section class="card panel-view hidden" data-panel-view="logs">
           <h2 class="panel-view-title">Audit Logs</h2>
           <p class="muted">Die Logs bleiben live nutzbar und helfen spaeter fuer Moderation, Tickets und Support-Kontext.</p>
@@ -742,6 +750,7 @@
     const ticketWelcomeInput = document.getElementById("ticketWelcomeInput");
     const ticketPanelsList = document.getElementById("ticketPanelsList");
     const activeTicketsList = document.getElementById("activeTicketsList");
+    const closedTicketsList = document.getElementById("closedTicketsList");
     const ticketFormHeading = document.getElementById("ticketFormHeading");
     const saveTicketPanelButton = document.getElementById("saveTicketPanelButton");
     const cancelTicketEditButton = document.getElementById("cancelTicketEditButton");
@@ -1436,6 +1445,36 @@
       }
     }
 
+    function renderClosedTickets(tickets) {
+      if (!tickets.length) {
+        closedTicketsList.innerHTML = '<div class="empty">Noch keine geschlossenen Tickets mit Transcript gefunden.</div>';
+        return;
+      }
+      const apiBase = normalizeBaseUrl(apiBaseUrlInput.value) || DEFAULT_API_BASE_URL;
+      closedTicketsList.innerHTML = tickets.map((ticket) => {
+        const transcriptLink = ticket.transcript_api_path ? `${apiBase}${ticket.transcript_api_path}` : "";
+        return `
+          <article class="ticket-card">
+            <div class="ticket-head">
+              <div>
+                <strong>#${escapeHtml(ticket.channel_name)}</strong>
+                <p class="muted small">Ticket-ID ${escapeHtml(ticket.id)} | Ersteller: ${escapeHtml(ticket.opener_name)}</p>
+              </div>
+              <span class="ticket-tag">${escapeHtml(ticket.status)}</span>
+            </div>
+            <div class="ticket-meta">
+              <div>Claimed By: ${escapeHtml(ticket.claimed_by_name || "-")}</div>
+              <div>Geschlossen: ${escapeHtml(ticket.closed_at || "-")}</div>
+              <div>Transcript: ${escapeHtml(ticket.transcript_path || "-")}</div>
+            </div>
+            <div class="button-row" style="margin-top:14px;">
+              ${ticket.transcript_available ? `<a href="${escapeHtml(transcriptLink)}" target="_blank" rel="noopener noreferrer"><button type="button">Transcript oeffnen</button></a>` : '<div class="empty">Kein Transcript vorhanden.</div>'}
+            </div>
+          </article>
+        `;
+      }).join("");
+    }
+
     function renderEntries(items) {
       if (!items.length) {
         entries.innerHTML = '<div class="empty">Keine Log-Eintraege fuer diese Auswahl gefunden.</div>';
@@ -1527,6 +1566,7 @@
       renderJoinToCreate(overview.join_to_create || null);
       renderTicketPanels(overview.ticket_panels || []);
       renderActiveTickets(overview.active_tickets || []);
+      renderClosedTickets(overview.closed_tickets || []);
       renderAdminCurrentGuild();
       resetVerificationForm();
       resetWelcomeForm();

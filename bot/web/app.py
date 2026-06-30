@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from typing import Any
 
 import discord
@@ -146,6 +147,8 @@ def _serialize_ticket(ticket, guild: discord.Guild, notes: list[Any]) -> dict[st
         "created_at": ticket.created_at.isoformat() if ticket.created_at else None,
         "closed_at": ticket.closed_at.isoformat() if ticket.closed_at else None,
         "transcript_path": ticket.transcript_path,
+        "transcript_available": bool(ticket.transcript_path),
+        "transcript_api_path": f"/api/guilds/{guild.id}/tickets/{ticket.id}/transcript" if ticket.transcript_path else None,
         "notes": [
             {
                 "id": note.id,
@@ -475,11 +478,16 @@ async def get_guild_overview(request: web.Request) -> web.Response:
         notifications = await notification_repo.list_for_guild(guild.id)
         panels = await ticket_repo.get_panels_for_guild(guild.id)
         active_tickets = await ticket_repo.get_active_tickets_for_guild(guild.id)
+        closed_tickets = await ticket_repo.get_recent_closed_tickets_for_guild(guild.id, limit=25)
 
         serialized_tickets = []
         for ticket in active_tickets:
             notes = await note_repo.list_for_ticket(ticket.id, limit=3)
             serialized_tickets.append(_serialize_ticket(ticket, guild, notes))
+
+        serialized_closed_tickets = []
+        for ticket in closed_tickets:
+            serialized_closed_tickets.append(_serialize_ticket(ticket, guild, []))
 
     payload = {
         "guild": {
@@ -517,8 +525,39 @@ async def get_guild_overview(request: web.Request) -> web.Response:
         "members_intent_enabled": bool(getattr(bot.settings, "enable_members_intent", False)),
         "ticket_panels": [_serialize_ticket_panel(panel, guild) for panel in panels],
         "active_tickets": serialized_tickets,
+        "closed_tickets": serialized_closed_tickets,
     }
     return web.json_response(payload)
+
+
+async def get_ticket_transcript(request: web.Request) -> web.Response:
+    guild = await _get_authorized_guild(request)
+    if guild is None:
+        return _forbidden("guild_access_denied")
+    if not await _session_can_use_ticket_staff(request, guild):
+        return _forbidden("ticket_staff_required")
+
+    ticket_id = int(request.match_info["ticket_id"])
+    database: DatabaseSessionManager = request.app["database"]
+    bot = request.app["bot"]
+    async with database.session() as session:
+        ticket_repo = TicketRepository(session)
+        ticket = await ticket_repo.get_ticket_by_id(ticket_id)
+        if ticket is None or ticket.guild_id != guild.id:
+            return web.json_response({"error": "ticket_not_found"}, status=404)
+        if not ticket.transcript_path:
+            return web.json_response({"error": "transcript_not_found"}, status=404)
+
+    transcript_path = Path(ticket.transcript_path).resolve()
+    transcript_root = Path(bot.tickets._transcript_dir()).resolve()  # type: ignore[attr-defined]
+    try:
+        transcript_path.relative_to(transcript_root)
+    except ValueError:
+        return web.json_response({"error": "transcript_path_invalid"}, status=400)
+    if not transcript_path.exists() or not transcript_path.is_file():
+        return web.json_response({"error": "transcript_file_missing"}, status=404)
+
+    return web.FileResponse(path=transcript_path)
 
 
 async def get_guild_welcome(request: web.Request) -> web.Response:
@@ -1625,6 +1664,7 @@ def create_web_app(database: DatabaseSessionManager, api_token: str, allowed_ori
     app.router.add_post("/api/guilds/{guild_id:\\d+}/tickets/{ticket_id:\\d+}/claim", claim_ticket_from_panel)
     app.router.add_post("/api/guilds/{guild_id:\\d+}/tickets/{ticket_id:\\d+}/waiting-user", set_ticket_waiting_user_from_panel)
     app.router.add_post("/api/guilds/{guild_id:\\d+}/tickets/{ticket_id:\\d+}/close", close_ticket_from_panel)
+    app.router.add_get("/api/guilds/{guild_id:\\d+}/tickets/{ticket_id:\\d+}/transcript", get_ticket_transcript)
     async def _close_notification_service(application: web.Application) -> None:
         await application["notification_service"].close()
 
