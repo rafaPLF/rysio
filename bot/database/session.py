@@ -85,7 +85,7 @@ class DatabaseSessionManager:
         if "welcome_channel_id" not in guild_settings_columns:
             connection.execute(text("ALTER TABLE guild_settings ADD COLUMN welcome_channel_id BIGINT"))
         if "welcome_style" not in guild_settings_columns:
-            connection.execute(text("ALTER TABLE guild_settings ADD COLUMN welcome_style VARCHAR(32) DEFAULT 'neon_card'"))
+            connection.execute(text("ALTER TABLE guild_settings ADD COLUMN welcome_style VARCHAR(32) DEFAULT 'rysio_card'"))
 
         if "notification_subscriptions" not in tables:
             return

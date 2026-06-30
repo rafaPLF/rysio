@@ -486,8 +486,8 @@
                 <div>
                   <label for="welcomeStyleSelect">Welcome Grafik</label>
                   <select id="welcomeStyleSelect">
-                    <option value="neon_card">Neon Card</option>
                     <option value="rysio_card">Rysio Card</option>
+                    <option value="neon_card">Neon Card</option>
                   </select>
                 </div>
               </div>
@@ -1053,7 +1053,7 @@
 
     function resetWelcomeForm() {
       welcomeChannelSelect.value = currentOverview?.welcome?.welcome_channel_id || "";
-      welcomeStyleSelect.value = currentOverview?.welcome?.welcome_style || "neon_card";
+      welcomeStyleSelect.value = currentOverview?.welcome?.welcome_style || "rysio_card";
       welcomeStatusText.textContent = "Bereit.";
       setWelcomeError("");
     }
@@ -1141,7 +1141,7 @@
           </div>
           <div class="panel-meta">
             <div>Channel: <strong>#${escapeHtml(welcome.welcome_channel_name || "Unbekannt")}</strong></div>
-            <div>Style: <strong>${escapeHtml(welcome.welcome_style || "neon_card")}</strong></div>
+            <div>Style: <strong>${escapeHtml(welcome.welcome_style || "rysio_card")}</strong></div>
             <div>Join-Erkennung: <strong>${membersIntentEnabled ? "bereit" : "Members-Intent aus"}</strong></div>
           </div>
         </article>
@@ -1896,7 +1896,7 @@
       const apiBaseUrl = normalizeBaseUrl(apiBaseUrlInput.value || DEFAULT_API_BASE_URL);
       const payload = {
         welcome_channel_id: welcomeChannelSelect.value,
-        welcome_style: welcomeStyleSelect.value || "neon_card",
+        welcome_style: welcomeStyleSelect.value || "rysio_card",
       };
 
       if (!guildId) {

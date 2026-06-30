@@ -15,7 +15,7 @@ def _welcome_status_text(settings, channel: discord.TextChannel | None) -> str:
     return (
         "Welcome-Nachrichten sind aktiv.\n"
         f"Channel: {channel_text}\n"
-        f"Style: `{settings.welcome_style or WELCOME_STYLE_NEON}`"
+        f"Style: `{settings.welcome_style or WELCOME_STYLE_RYSIO}`"
     )
 
 
@@ -48,8 +48,8 @@ class WelcomeGroup(app_commands.Group):
     @app_commands.describe(channel="Channel fuer die Begruessung", style="Waehle die Welcome-Grafik aus")
     @app_commands.choices(
         style=[
-            app_commands.Choice(name="Neon Card", value=WELCOME_STYLE_NEON),
             app_commands.Choice(name="Rysio Card", value=WELCOME_STYLE_RYSIO),
+            app_commands.Choice(name="Neon Card", value=WELCOME_STYLE_NEON),
         ]
     )
     async def setup(
@@ -119,7 +119,7 @@ class WelcomeGroup(app_commands.Group):
             return
 
         await interaction.response.defer(ephemeral=True)
-        await send_welcome_message(interaction.client, interaction.user, channel=channel, style=settings.welcome_style or WELCOME_STYLE_NEON)
+        await send_welcome_message(interaction.client, interaction.user, channel=channel, style=settings.welcome_style or WELCOME_STYLE_RYSIO)
         await interaction.followup.send(f"Preview wurde in {channel.mention} gesendet.", ephemeral=True)
 
     @app_commands.command(name="disable", description="Deaktiviert Welcome-Nachrichten fuer diesen Server.")
@@ -158,7 +158,7 @@ class WelcomeCog(commands.Cog):
             return
 
         try:
-            await send_welcome_message(self.bot, member, channel=channel, style=settings.welcome_style or WELCOME_STYLE_NEON)
+            await send_welcome_message(self.bot, member, channel=channel, style=settings.welcome_style or WELCOME_STYLE_RYSIO)
         except discord.HTTPException:
             return
 

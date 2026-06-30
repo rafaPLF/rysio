@@ -186,7 +186,7 @@ async def build_rysio_welcome_card(member: discord.Member, *, guild_name: str, m
     return output
 
 
-async def send_welcome_message(bot: discord.Client, member: discord.Member, *, channel: discord.TextChannel, style: str = "neon_card") -> discord.Message:
+async def send_welcome_message(bot: discord.Client, member: discord.Member, *, channel: discord.TextChannel, style: str = "rysio_card") -> discord.Message:
     member_count = member.guild.member_count or 0
     if style == WELCOME_STYLE_RYSIO:
         image = await build_rysio_welcome_card(

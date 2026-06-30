@@ -199,7 +199,7 @@ def _serialize_welcome_settings(settings, guild: discord.Guild) -> dict[str, Any
         "enabled": bool(settings.welcome_enabled) if settings else False,
         "welcome_channel_id": str(settings.welcome_channel_id) if settings and settings.welcome_channel_id else None,
         "welcome_channel_name": channel.name if isinstance(channel, discord.TextChannel) else None,
-        "welcome_style": settings.welcome_style if settings and settings.welcome_style else "neon_card",
+        "welcome_style": settings.welcome_style if settings and settings.welcome_style else "rysio_card",
     }
 
 
@@ -572,7 +572,7 @@ async def save_welcome_settings(request: web.Request) -> web.Response:
         return web.json_response({"error": "invalid_json"}, status=400)
 
     channel_id_raw = str(payload.get("welcome_channel_id", "")).strip()
-    style = str(payload.get("welcome_style", "neon_card")).strip() or "neon_card"
+    style = str(payload.get("welcome_style", "rysio_card")).strip() or "rysio_card"
     if style not in {"neon_card", "rysio_card"}:
         return web.json_response({"error": "unsupported_welcome_style"}, status=400)
     if not channel_id_raw:
@@ -609,7 +609,7 @@ async def delete_welcome_settings(request: web.Request) -> web.Response:
         return _forbidden("guild_manage_required")
 
     bot = request.app["bot"]
-    await bot.guild_config.set_welcome(bot.database, guild.id, False, None, "neon_card")  # type: ignore[attr-defined]
+    await bot.guild_config.set_welcome(bot.database, guild.id, False, None, "rysio_card")  # type: ignore[attr-defined]
     settings = await bot.guild_config.get_settings(bot.database, guild.id)  # type: ignore[attr-defined]
     return web.json_response({"deleted": True, "welcome": _serialize_welcome_settings(settings, guild)})
 
@@ -638,7 +638,7 @@ async def preview_welcome_settings(request: web.Request) -> web.Response:
     if not isinstance(channel, discord.TextChannel):
         return web.json_response({"error": "welcome_channel_not_found"}, status=404)
 
-    await send_welcome_message(bot, member, channel=channel, style=settings.welcome_style or "neon_card")
+    await send_welcome_message(bot, member, channel=channel, style=settings.welcome_style or "rysio_card")
     return web.json_response({"preview_sent": True, "channel_id": str(channel.id)})
 
 

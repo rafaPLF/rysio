@@ -29,4 +29,4 @@ class GuildSettings(Base):
     ticket_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     welcome_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     welcome_channel_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
-    welcome_style: Mapped[str] = mapped_column(String(32), default="neon_card")
+    welcome_style: Mapped[str] = mapped_column(String(32), default="rysio_card")
