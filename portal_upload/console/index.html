@@ -205,6 +205,39 @@
       border: 1px solid var(--border); border-radius: 18px; padding: 14px;
       background: linear-gradient(180deg, rgba(57, 64, 75, 0.96), rgba(52, 59, 68, 0.94));
     }
+    .transcript-list { display: grid; gap: 10px; }
+    .transcript-item {
+      display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: center;
+      padding: 12px 14px; border-radius: 16px; border: 1px solid var(--border);
+      background: rgba(47, 55, 66, 0.78);
+      transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+    }
+    .transcript-item:hover {
+      transform: translateY(-2px);
+      border-color: rgba(143, 216, 255, 0.18);
+      box-shadow: 0 14px 28px rgba(0, 0, 0, 0.16);
+    }
+    .transcript-main { min-width: 0; display: grid; gap: 6px; }
+    .transcript-title-row, .transcript-meta-row {
+      display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+    }
+    .transcript-title {
+      font-size: 15px; font-weight: 700; color: var(--text);
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .transcript-meta, .transcript-path {
+      color: var(--muted);
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .transcript-meta { font-size: 12px; }
+    .transcript-path { font-size: 11px; opacity: 0.88; }
+    .transcript-actions {
+      display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: flex-end;
+    }
+    .inline-button {
+      width: auto; min-height: 40px; padding: 0 14px; border-radius: 12px;
+      display: inline-flex; align-items: center; justify-content: center;
+    }
     .panel-head, .ticket-head, .entry-head {
       display: flex; justify-content: space-between; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 12px;
     }
@@ -232,6 +265,8 @@
       .page { width: calc(100% - 18px); margin: 10px auto 24px; }
       .topbar, .sidebar, .content-shell { padding: 14px; }
       .summary-card { min-width: 100%; }
+      .transcript-item { grid-template-columns: 1fr; }
+      .transcript-actions { justify-content: flex-start; }
     }
   </style>
 </head>
@@ -621,7 +656,7 @@
             </div>
             <span class="ticket-tag">History</span>
           </div>
-          <div id="closedTicketsList" class="ticket-list">
+          <div id="closedTicketsList" class="transcript-list">
             <div class="empty">Noch kein Server geladen.</div>
           </div>
         </section>
@@ -1454,25 +1489,54 @@
       closedTicketsList.innerHTML = tickets.map((ticket) => {
         const transcriptLink = ticket.transcript_api_path ? `${apiBase}${ticket.transcript_api_path}` : "";
         return `
-          <article class="ticket-card">
-            <div class="ticket-head">
-              <div>
-                <strong>#${escapeHtml(ticket.channel_name)}</strong>
-                <p class="muted small">Ticket-ID ${escapeHtml(ticket.id)} | Ersteller: ${escapeHtml(ticket.opener_name)}</p>
+          <article class="transcript-item">
+            <div class="transcript-main">
+              <div class="transcript-title-row">
+                <span class="transcript-title">#${escapeHtml(ticket.channel_name)}</span>
+                <span class="ticket-tag">${escapeHtml(ticket.status)}</span>
               </div>
-              <span class="ticket-tag">${escapeHtml(ticket.status)}</span>
+              <div class="transcript-meta-row">
+                <span class="transcript-meta">Ticket-ID ${escapeHtml(ticket.id)}</span>
+                <span class="transcript-meta">Ersteller: ${escapeHtml(ticket.opener_name)}</span>
+                <span class="transcript-meta">Claim: ${escapeHtml(ticket.claimed_by_name || "-")}</span>
+                <span class="transcript-meta">Geschlossen: ${escapeHtml(ticket.closed_at || "-")}</span>
+              </div>
+              <div class="transcript-path">${escapeHtml(ticket.transcript_path || "-")}</div>
             </div>
-            <div class="ticket-meta">
-              <div>Claimed By: ${escapeHtml(ticket.claimed_by_name || "-")}</div>
-              <div>Geschlossen: ${escapeHtml(ticket.closed_at || "-")}</div>
-              <div>Transcript: ${escapeHtml(ticket.transcript_path || "-")}</div>
-            </div>
-            <div class="button-row" style="margin-top:14px;">
-              ${ticket.transcript_available ? `<a href="${escapeHtml(transcriptLink)}" target="_blank" rel="noopener noreferrer"><button type="button">Transcript oeffnen</button></a>` : '<div class="empty">Kein Transcript vorhanden.</div>'}
+            <div class="transcript-actions">
+              ${ticket.transcript_available ? `<a class="inline-button" href="${escapeHtml(transcriptLink)}" target="_blank" rel="noopener noreferrer">Transcript</a>` : ""}
+              <button class="inline-button danger-button" type="button" onclick="confirmDeleteTranscript(${Number(ticket.id)})">Loeschen</button>
             </div>
           </article>
         `;
       }).join("");
+    }
+
+    async function deleteTranscript(ticketId) {
+      const guildId = guildSelect.value;
+      const apiBaseUrl = normalizeBaseUrl(apiBaseUrlInput.value || DEFAULT_API_BASE_URL);
+      if (!guildId || !ticketId) return;
+      setError("");
+      statusText.textContent = "Transcript wird geloescht...";
+      try {
+        const response = await fetch(`${apiBaseUrl}/api/guilds/${guildId}/tickets/${ticketId}/transcript`, {
+          method: "DELETE",
+          headers: getAuthHeaders(),
+        });
+        const body = await response.json();
+        if (!response.ok) throw new Error(body.error || `HTTP ${response.status}`);
+        await loadOverview();
+        statusText.textContent = "Transcript geloescht.";
+      } catch (error) {
+        setError(`Transcript-Loeschen fehlgeschlagen: ${error.message}`);
+        statusText.textContent = "Transcript konnte nicht geloescht werden.";
+      }
+    }
+
+    async function confirmDeleteTranscript(ticketId) {
+      const confirmed = window.confirm("Bist du dir sicher? Dieses Transcript wird unwiderruflich geloescht.");
+      if (!confirmed) return;
+      await deleteTranscript(ticketId);
     }
 
     function renderEntries(items) {

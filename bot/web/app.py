@@ -560,6 +560,40 @@ async def get_ticket_transcript(request: web.Request) -> web.Response:
     return web.FileResponse(path=transcript_path)
 
 
+async def delete_ticket_transcript(request: web.Request) -> web.Response:
+    guild = await _get_authorized_guild(request)
+    if guild is None:
+        return _forbidden("guild_access_denied")
+    if not await _session_can_use_ticket_staff(request, guild):
+        return _forbidden("ticket_staff_required")
+
+    ticket_id = int(request.match_info["ticket_id"])
+    database: DatabaseSessionManager = request.app["database"]
+    bot = request.app["bot"]
+
+    async with database.session() as session:
+        ticket_repo = TicketRepository(session)
+        ticket = await ticket_repo.get_ticket_by_id(ticket_id)
+        if ticket is None or ticket.guild_id != guild.id:
+            return web.json_response({"error": "ticket_not_found"}, status=404)
+        if not ticket.transcript_path:
+            return web.json_response({"error": "transcript_not_found"}, status=404)
+
+        transcript_path = Path(ticket.transcript_path).resolve()
+        transcript_root = Path(bot.tickets._transcript_dir()).resolve()
+        try:
+            transcript_path.relative_to(transcript_root)
+        except ValueError:
+            return web.json_response({"error": "transcript_path_invalid"}, status=400)
+
+        if transcript_path.exists() and transcript_path.is_file():
+            transcript_path.unlink()
+
+        await ticket_repo.delete_ticket_transcript(ticket)
+
+    return web.json_response({"deleted": True, "ticket_id": ticket_id})
+
+
 async def get_guild_welcome(request: web.Request) -> web.Response:
     guild = await _get_authorized_guild(request)
     if guild is None:
@@ -1665,6 +1699,7 @@ def create_web_app(database: DatabaseSessionManager, api_token: str, allowed_ori
     app.router.add_post("/api/guilds/{guild_id:\\d+}/tickets/{ticket_id:\\d+}/waiting-user", set_ticket_waiting_user_from_panel)
     app.router.add_post("/api/guilds/{guild_id:\\d+}/tickets/{ticket_id:\\d+}/close", close_ticket_from_panel)
     app.router.add_get("/api/guilds/{guild_id:\\d+}/tickets/{ticket_id:\\d+}/transcript", get_ticket_transcript)
+    app.router.add_delete("/api/guilds/{guild_id:\\d+}/tickets/{ticket_id:\\d+}/transcript", delete_ticket_transcript)
     async def _close_notification_service(application: web.Application) -> None:
         await application["notification_service"].close()
 

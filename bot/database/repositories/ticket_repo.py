@@ -111,6 +111,7 @@ class TicketRepository:
             .where(
                 Ticket.guild_id == guild_id,
                 Ticket.status == "closed",
+                Ticket.transcript_path.is_not(None),
             )
             .order_by(Ticket.closed_at.desc(), Ticket.id.desc())
             .limit(limit)
@@ -168,5 +169,10 @@ class TicketRepository:
         ticket.closed_by_user_id = closed_by_user_id
         ticket.transcript_path = transcript_path
         ticket.closed_at = datetime.now(timezone.utc)
+        await self.session.flush()
+        return ticket
+
+    async def delete_ticket_transcript(self, ticket: Ticket) -> Ticket:
+        ticket.transcript_path = None
         await self.session.flush()
         return ticket
