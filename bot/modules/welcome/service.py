@@ -37,7 +37,7 @@ def _fit_text(draw: ImageDraw.ImageDraw, text: str, *, max_width: int, start_siz
     return _load_font(28, bold=bold)
 
 
-async def build_welcome_card(member: discord.Member, *, guild_name: str, member_count: int) -> BytesIO:
+async def build_welcome_card(member: discord.Member, *, guild_name: str, member_count: int, language: str = "de") -> BytesIO:
     width, height = 1200, 540
     canvas = Image.new("RGBA", (width, height), (22, 28, 41, 255))
     draw = ImageDraw.Draw(canvas)
@@ -56,7 +56,12 @@ async def build_welcome_card(member: discord.Member, *, guild_name: str, member_
     draw.rounded_rectangle((435, 112, 765, 160), radius=18, fill=(66, 71, 76, 255))
 
     badge_font = _load_font(26, bold=True)
-    badge_text = f"Mitglied #{member_count}"
+    if language.lower().startswith("pl"):
+        badge_text = f"Członek #{member_count}"
+    elif language.lower().startswith("en"):
+        badge_text = f"Member #{member_count}"
+    else:
+        badge_text = f"Mitglied #{member_count}"
     badge_bbox = draw.textbbox((0, 0), badge_text, font=badge_font)
     badge_width = badge_bbox[2] - badge_bbox[0]
     draw.text(((width - badge_width) / 2, 122), badge_text, font=badge_font, fill=(244, 244, 244, 255))
@@ -76,7 +81,15 @@ async def build_welcome_card(member: discord.Member, *, guild_name: str, member_
     avatar_x = (width - 188) // 2
     canvas.alpha_composite(avatar_border, (avatar_x, 174))
 
-    welcome_text = f"Willkommen {member.display_name}"
+    if language.lower().startswith("pl"):
+        welcome_text = f"Witamy {member.display_name}"
+        subtitle_top = "na"
+    elif language.lower().startswith("en"):
+        welcome_text = f"Welcome {member.display_name}"
+        subtitle_top = "to"
+    else:
+        welcome_text = f"Willkommen {member.display_name}"
+        subtitle_top = "bei"
     welcome_font = _fit_text(draw, welcome_text, max_width=680, start_size=58, bold=True)
     welcome_bbox = draw.textbbox((0, 0), welcome_text, font=welcome_font)
     welcome_width = welcome_bbox[2] - welcome_bbox[0]
@@ -84,7 +97,6 @@ async def build_welcome_card(member: discord.Member, *, guild_name: str, member_
 
     subtitle_top_font = _load_font(28, bold=True)
     subtitle_bottom_font = _fit_text(draw, guild_name, max_width=560, start_size=32, bold=True)
-    subtitle_top = "bei"
     subtitle_top_bbox = draw.textbbox((0, 0), subtitle_top, font=subtitle_top_font)
     subtitle_top_width = subtitle_top_bbox[2] - subtitle_top_bbox[0]
     draw.text(((width - subtitle_top_width) / 2, 435), subtitle_top, font=subtitle_top_font, fill=(232, 232, 232, 255))
@@ -110,7 +122,7 @@ def _load_rysio_art(size: tuple[int, int]) -> Image.Image | None:
         return None
 
 
-async def build_rysio_welcome_card(member: discord.Member, *, guild_name: str, member_count: int) -> BytesIO:
+async def build_rysio_welcome_card(member: discord.Member, *, guild_name: str, member_count: int, language: str = "de") -> BytesIO:
     width, height = 1200, 540
     canvas = Image.new("RGBA", (width, height), (13, 19, 30, 255))
     draw = ImageDraw.Draw(canvas)
@@ -130,7 +142,12 @@ async def build_rysio_welcome_card(member: discord.Member, *, guild_name: str, m
     draw.rounded_rectangle((574, 104, 1088, 438), radius=38, fill=(23, 32, 47, 235))
 
     badge_font = _load_font(24, bold=True)
-    badge_text = f"Mitglied #{member_count}"
+    if language.lower().startswith("pl"):
+        badge_text = f"Członek #{member_count}"
+    elif language.lower().startswith("en"):
+        badge_text = f"Member #{member_count}"
+    else:
+        badge_text = f"Mitglied #{member_count}"
     badge_bbox = draw.textbbox((0, 0), badge_text, font=badge_font)
     badge_w = badge_bbox[2] - badge_bbox[0]
     draw.rounded_rectangle((470, 82, 730, 124), radius=16, fill=(47, 61, 85, 215))
@@ -163,14 +180,21 @@ async def build_rysio_welcome_card(member: discord.Member, *, guild_name: str, m
     avatar_ring.alpha_composite(avatar, (10, 10))
     canvas.alpha_composite(avatar_ring, (730, 132))
 
-    headline = f"Willkommen {member.display_name}"
+    if language.lower().startswith("pl"):
+        headline = f"Witamy {member.display_name}"
+        sub_text = "jest teraz na serwerze"
+    elif language.lower().startswith("en"):
+        headline = f"Welcome {member.display_name}"
+        sub_text = "is now on the server"
+    else:
+        headline = f"Willkommen {member.display_name}"
+        sub_text = "ist jetzt auf dem Server"
     headline_font = _fit_text(draw, headline, max_width=410, start_size=54, bold=True)
     headline_bbox = draw.textbbox((0, 0), headline, font=headline_font)
     headline_w = headline_bbox[2] - headline_bbox[0]
     draw.text((626 + (410 - headline_w) / 2, 312), headline, font=headline_font, fill=(247, 249, 255, 255))
 
     sub_font = _load_font(28, bold=True)
-    sub_text = "ist jetzt auf dem Server"
     sub_bbox = draw.textbbox((0, 0), sub_text, font=sub_font)
     sub_w = sub_bbox[2] - sub_bbox[0]
     draw.text((626 + (410 - sub_w) / 2, 374), sub_text, font=sub_font, fill=(156, 196, 255, 255))
@@ -188,22 +212,33 @@ async def build_rysio_welcome_card(member: discord.Member, *, guild_name: str, m
 
 async def send_welcome_message(bot: discord.Client, member: discord.Member, *, channel: discord.TextChannel, style: str = "rysio_card") -> discord.Message:
     member_count = member.guild.member_count or 0
+    language = await bot.guild_config.get_language(  # type: ignore[attr-defined]
+        bot.database,
+        member.guild.id,
+    )
     if style == WELCOME_STYLE_RYSIO:
         image = await build_rysio_welcome_card(
             member,
             guild_name=member.guild.name,
             member_count=member_count,
+            language=language,
         )
     else:
         image = await build_welcome_card(
             member,
             guild_name=member.guild.name,
             member_count=member_count,
+            language=language,
         )
         style = WELCOME_STYLE_NEON
 
     file = discord.File(image, filename="welcome-card.png")
     embed = discord.Embed(color=discord.Color.blue())
     embed.set_image(url="attachment://welcome-card.png")
-    embed.description = f"{member.mention} willkommen auf **{member.guild.name}**."
+    if language.lower().startswith("pl"):
+        embed.description = f"{member.mention} witaj na **{member.guild.name}**."
+    elif language.lower().startswith("en"):
+        embed.description = f"{member.mention} welcome to **{member.guild.name}**."
+    else:
+        embed.description = f"{member.mention} willkommen auf **{member.guild.name}**."
     return await channel.send(content=member.mention, embed=embed, file=file)

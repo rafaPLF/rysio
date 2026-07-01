@@ -386,6 +386,8 @@ def _build_ticket_panel_embed(
 def _build_verification_reaction_hint(language: str, reaction_emoji: str) -> str:
     if language.lower().startswith("de"):
         return f"Reagiere mit {reaction_emoji}, um dich zu verifizieren."
+    if language.lower().startswith("pl"):
+        return f"Zareaguj {reaction_emoji}, aby się zweryfikować."
     return f"React with {reaction_emoji} to verify yourself."
 
 

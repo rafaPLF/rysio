@@ -59,7 +59,7 @@ class SetupGroup(app_commands.Group):
         await interaction.response.send_message(message, ephemeral=True)
 
     @app_commands.command(name="language", description="Setzt die Sprache fuer diesen Server.")
-    @app_commands.describe(language="Aktuell unterstuetzt: de, en")
+    @app_commands.describe(language="Aktuell unterstuetzt: de, en, pl")
     async def language(self, interaction: discord.Interaction, language: str) -> None:
         if interaction.guild is None:
             await interaction.response.send_message("Das geht nur in einem Server.", ephemeral=True)
@@ -70,8 +70,8 @@ class SetupGroup(app_commands.Group):
             return
 
         normalized = language.lower().strip()
-        if normalized not in {"de", "en"}:
-            await interaction.response.send_message("Aktuell sind nur `de` und `en` verfuegbar.", ephemeral=True)
+        if normalized not in {"de", "en", "pl"}:
+            await interaction.response.send_message("Aktuell sind nur `de`, `en` und `pl` verfuegbar.", ephemeral=True)
             return
 
         await interaction.client.guild_config.set_language(  # type: ignore[attr-defined]
