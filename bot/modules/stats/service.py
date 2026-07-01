@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
+import time
 
+import aiohttp
 import discord
 
 from bot.database.repositories.stat_channel_repo import StatChannelRepository
@@ -10,16 +12,23 @@ STAT_METRIC_TOTAL = "members_total"
 STAT_METRIC_HUMANS = "members_humans"
 STAT_METRIC_BOTS = "members_bots"
 STAT_METRIC_ONLINE = "members_online"
+STAT_METRIC_TWITCH_FOLLOWERS = "twitch_followers"
 
 STAT_METRICS = {
     STAT_METRIC_TOTAL: "All Members: {value}",
     STAT_METRIC_HUMANS: "Members: {value}",
     STAT_METRIC_BOTS: "Bots: {value}",
     STAT_METRIC_ONLINE: "Online Members: {value}",
+    STAT_METRIC_TWITCH_FOLLOWERS: "{target} Twitch Follower: {value}",
 }
 
 
 class StatsService:
+    def __init__(self) -> None:
+        self._session: aiohttp.ClientSession | None = None
+        self._twitch_token: str | None = None
+        self._twitch_token_expires_at: float = 0.0
+
     def normalize_metric(self, metric: str) -> str:
         value = metric.strip().lower()
         if value not in STAT_METRICS:
@@ -37,10 +46,18 @@ class StatsService:
         metric: str,
         category: discord.CategoryChannel | None,
         template: str | None = None,
+        source_target: str | None = None,
     ):
         normalized_metric = self.normalize_metric(metric)
+        normalized_target = self._normalize_target(normalized_metric, source_target)
         final_template = template or self.default_template(normalized_metric)
-        channel_name = await self._build_channel_name(bot, guild, normalized_metric, final_template)
+        channel_name = await self._build_channel_name(
+            bot,
+            guild,
+            normalized_metric,
+            final_template,
+            source_target=normalized_target,
+        )
 
         overwrites = {
             guild.default_role: discord.PermissionOverwrite(connect=False, speak=False),
@@ -60,6 +77,7 @@ class StatsService:
                 category_id=category.id if category else None,
                 metric_type=normalized_metric,
                 template=final_template,
+                source_target=normalized_target,
             )
         return entry, channel
 
@@ -107,7 +125,13 @@ class StatsService:
                 stale_channel_ids.append(entry.channel_id)
                 continue
 
-            target_name = await self._build_channel_name(bot, guild, entry.metric_type, entry.template)
+            target_name = await self._build_channel_name(
+                bot,
+                guild,
+                entry.metric_type,
+                entry.template,
+                source_target=entry.source_target,
+            )
             if channel.name == target_name:
                 updated += 1
                 continue
@@ -132,16 +156,6 @@ class StatsService:
             total_updated += await self.refresh_guild(bot, guild)
         return total_updated
 
-    async def _build_channel_name(
-        self,
-        bot: discord.Client,
-        guild: discord.Guild,
-        metric: str,
-        template: str,
-    ) -> str:
-        value = await self._resolve_metric_value(bot, guild, metric)
-        return template.replace("{value}", str(value))[:100]
-
     async def _resolve_metric_value(self, bot: discord.Client, guild: discord.Guild, metric: str) -> int:
         normalized_metric = self.normalize_metric(metric)
         if normalized_metric == STAT_METRIC_TOTAL:
@@ -160,7 +174,121 @@ class StatsService:
             return sum(
                 1 for member in self._iter_known_members(guild.members) if member.status != discord.Status.offline
             )
+        if normalized_metric == STAT_METRIC_TWITCH_FOLLOWERS:
+            raise ValueError("source_target_required")
         raise ValueError("unsupported_metric")
+
+    async def _resolve_external_metric_value(
+        self,
+        bot: discord.Client,
+        metric: str,
+        source_target: str | None,
+    ) -> int:
+        normalized_metric = self.normalize_metric(metric)
+        target = self._normalize_target(normalized_metric, source_target)
+        if normalized_metric == STAT_METRIC_TWITCH_FOLLOWERS:
+            return await self._fetch_twitch_follower_count(bot, target)
+        raise ValueError("unsupported_metric")
+
+    async def _build_channel_name(
+        self,
+        bot: discord.Client,
+        guild: discord.Guild,
+        metric: str,
+        template: str,
+        source_target: str | None = None,
+    ) -> str:
+        normalized_metric = self.normalize_metric(metric)
+        if normalized_metric == STAT_METRIC_TWITCH_FOLLOWERS:
+            value = await self._resolve_external_metric_value(bot, normalized_metric, source_target)
+        else:
+            value = await self._resolve_metric_value(bot, guild, normalized_metric)
+        channel_name = template.replace("{value}", str(value))
+        channel_name = channel_name.replace("{target}", source_target or "")
+        return " ".join(channel_name.split())[:100]
+
+    def _normalize_target(self, metric: str, source_target: str | None) -> str | None:
+        normalized_metric = self.normalize_metric(metric)
+        target = (source_target or "").strip()
+        if normalized_metric == STAT_METRIC_TWITCH_FOLLOWERS:
+            if not target:
+                raise ValueError("missing_source_target")
+            return target.lower()
+        return target or None
+
+    async def _ensure_session(self) -> aiohttp.ClientSession:
+        if self._session is None or self._session.closed:
+            self._session = aiohttp.ClientSession()
+        return self._session
+
+    async def _fetch_twitch_follower_count(self, bot: discord.Client, login_name: str) -> int:
+        session = await self._ensure_session()
+        token = await self._get_twitch_app_token(bot, session)
+        client_id = bot.settings.twitch_client_id  # type: ignore[attr-defined]
+        if token is None or not client_id:
+            raise ValueError("twitch_not_configured")
+
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Client-ID": client_id,
+        }
+
+        async with session.get(
+            "https://api.twitch.tv/helix/users",
+            params={"login": login_name},
+            headers=headers,
+        ) as response:
+            if response.status >= 400:
+                raise ValueError("twitch_lookup_failed")
+            payload = await response.json()
+
+        users = payload.get("data") or []
+        if not users:
+            raise ValueError("twitch_user_not_found")
+        broadcaster_id = str(users[0].get("id") or "").strip()
+        if not broadcaster_id:
+            raise ValueError("twitch_user_not_found")
+
+        async with session.get(
+            "https://api.twitch.tv/helix/channels/followers",
+            params={"broadcaster_id": broadcaster_id},
+            headers=headers,
+        ) as response:
+            if response.status >= 400:
+                raise ValueError("twitch_followers_unavailable")
+            payload = await response.json()
+
+        return int(payload.get("total") or 0)
+
+    async def _get_twitch_app_token(self, bot: discord.Client, session: aiohttp.ClientSession) -> str | None:
+        if time.time() < self._twitch_token_expires_at and self._twitch_token:
+            return self._twitch_token
+
+        client_id = bot.settings.twitch_client_id  # type: ignore[attr-defined]
+        client_secret = bot.settings.twitch_client_secret  # type: ignore[attr-defined]
+        if not client_id or not client_secret:
+            return None
+
+        async with session.post(
+            "https://id.twitch.tv/oauth2/token",
+            params={
+                "client_id": client_id,
+                "client_secret": client_secret,
+                "grant_type": "client_credentials",
+            },
+        ) as response:
+            if response.status >= 400:
+                return None
+            payload = await response.json()
+
+        access_token = payload.get("access_token")
+        expires_in = int(payload.get("expires_in") or 0)
+        if not access_token:
+            return None
+
+        self._twitch_token = str(access_token)
+        self._twitch_token_expires_at = time.time() + max(60, expires_in - 120)
+        return self._twitch_token
 
     @staticmethod
     def _iter_known_members(members: Iterable[discord.Member]) -> Iterable[discord.Member]:

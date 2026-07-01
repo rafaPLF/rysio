@@ -9,6 +9,7 @@ from bot.modules.stats.service import (
     STAT_METRIC_HUMANS,
     STAT_METRIC_ONLINE,
     STAT_METRIC_TOTAL,
+    STAT_METRIC_TWITCH_FOLLOWERS,
     StatsService,
 )
 from bot.utils.access import can_manage_guild
@@ -20,6 +21,7 @@ def _metric_choices() -> list[app_commands.Choice[str]]:
         app_commands.Choice(name="Echte Mitglieder", value=STAT_METRIC_HUMANS),
         app_commands.Choice(name="Bots", value=STAT_METRIC_BOTS),
         app_commands.Choice(name="Online Mitglieder", value=STAT_METRIC_ONLINE),
+        app_commands.Choice(name="Twitch Follower", value=STAT_METRIC_TWITCH_FOLLOWERS),
     ]
 
 
@@ -33,6 +35,7 @@ class StatsGroup(app_commands.Group):
         metric="Welche Zahl angezeigt werden soll",
         category="Kategorie fuer den Stats-Channel",
         template="Optionales Format, z. B. Online Mitglieder: {value}",
+        target="Optionaler Target-Name, z. B. Twitch Kanalname",
     )
     @app_commands.choices(metric=_metric_choices())
     async def add(
@@ -41,6 +44,7 @@ class StatsGroup(app_commands.Group):
         metric: app_commands.Choice[str],
         category: discord.CategoryChannel | None = None,
         template: str | None = None,
+        target: str | None = None,
     ) -> None:
         if interaction.guild is None:
             await interaction.response.send_message("Das geht nur in einem Server.", ephemeral=True)
@@ -62,6 +66,7 @@ class StatsGroup(app_commands.Group):
                 metric=metric.value,
                 category=category,
                 template=template.strip() if template else None,
+                source_target=target.strip() if target else None,
             )
         except ValueError:
             await interaction.response.send_message("Diese Statistik wird aktuell noch nicht unterstuetzt.", ephemeral=True)
@@ -87,7 +92,8 @@ class StatsGroup(app_commands.Group):
         for entry in entries:
             channel = interaction.guild.get_channel(entry.channel_id)
             channel_text = channel.mention if isinstance(channel, discord.VoiceChannel) else f"`{entry.channel_id}`"
-            lines.append(f"{channel_text} -> `{entry.metric_type}` mit `{entry.template}`")
+            target_text = f" | Target: `{entry.source_target}`" if entry.source_target else ""
+            lines.append(f"{channel_text} -> `{entry.metric_type}` mit `{entry.template}`{target_text}")
         await interaction.response.send_message("\n".join(lines), ephemeral=True)
 
     @app_commands.command(name="remove", description="Entfernt einen Stats-Channel und loescht ihn direkt.")

@@ -281,6 +281,7 @@ def _serialize_stat_channel(entry, guild: discord.Guild) -> dict[str, Any]:
         "category_name": category.name if isinstance(category, discord.CategoryChannel) else None,
         "metric_type": entry.metric_type,
         "template": entry.template,
+        "source_target": entry.source_target,
         "enabled": bool(entry.enabled),
     }
 
@@ -754,6 +755,7 @@ async def create_guild_stat(request: web.Request) -> web.Response:
 
     metric_type = str(payload.get("metric_type") or "").strip()
     template = str(payload.get("template") or "").strip() or None
+    source_target = str(payload.get("source_target") or "").strip() or None
     raw_category_id = str(payload.get("category_id") or "").strip()
 
     category: discord.CategoryChannel | None = None
@@ -777,6 +779,7 @@ async def create_guild_stat(request: web.Request) -> web.Response:
             metric=metric_type,
             category=category,
             template=template,
+            source_target=source_target,
         )
     except ValueError as exc:
         return web.json_response({"error": str(exc)}, status=400)

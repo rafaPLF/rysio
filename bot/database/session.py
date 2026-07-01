@@ -121,3 +121,10 @@ class DatabaseSessionManager:
                 connection.execute(text("ALTER TABLE ticket_panels ADD COLUMN topic_options_json TEXT"))
             if "welcome_message" not in ticket_panel_columns:
                 connection.execute(text("ALTER TABLE ticket_panels ADD COLUMN welcome_message TEXT"))
+
+        if "stat_channels" in tables:
+            stat_channel_columns = {column["name"] for column in inspector.get_columns("stat_channels")}
+            if "source_target" not in stat_channel_columns:
+                connection.execute(text("ALTER TABLE stat_channels ADD COLUMN source_target VARCHAR(255)"))
+            if "enabled" not in stat_channel_columns:
+                connection.execute(text("ALTER TABLE stat_channels ADD COLUMN enabled BOOLEAN DEFAULT TRUE"))

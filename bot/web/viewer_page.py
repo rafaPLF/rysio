@@ -377,6 +377,7 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
                     <option value="members_humans">Nur Mitglieder</option>
                     <option value="members_bots">Nur Bots</option>
                     <option value="members_online">Online Mitglieder</option>
+                    <option value="twitch_followers">Twitch Follower</option>
                   </select>
                 </div>
                 <div>
@@ -385,9 +386,13 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
                     <option value="">Keine Kategorie</option>
                   </select>
                 </div>
+                <div id="statsTargetField" class="hidden">
+                  <label for="statsTargetInput">Twitch Kanalname</label>
+                  <input id="statsTargetInput" placeholder="z. B. lukisteve">
+                </div>
                 <div>
                   <label for="statsTemplateInput">Anzeige-Template</label>
-                  <input id="statsTemplateInput" placeholder="z. B. Online Members: {value}">
+                  <input id="statsTemplateInput" placeholder="z. B. {{target}} Twitch Follower: {{value}}">
                 </div>
               </div>
               <div class="button-row" style="margin-top:14px;">
@@ -699,6 +704,8 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
     const notificationMentionRoleSelect = document.getElementById("notificationMentionRoleSelect");
     const statsMetricSelect = document.getElementById("statsMetricSelect");
     const statsCategorySelect = document.getElementById("statsCategorySelect");
+    const statsTargetField = document.getElementById("statsTargetField");
+    const statsTargetInput = document.getElementById("statsTargetInput");
     const statsTemplateInput = document.getElementById("statsTemplateInput");
     const statsList = document.getElementById("statsList");
     const saveStatsButton = document.getElementById("saveStatsButton");
@@ -740,6 +747,7 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
       members_humans: "Members: {{value}}",
       members_bots: "Bots: {{value}}",
       members_online: "Online Members: {{value}}",
+      twitch_followers: "{{target}} Twitch Follower: {{value}}",
     }};
 
     function escapeHtml(value) {{
@@ -752,6 +760,16 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
 
     function getDefaultStatsTemplate(metric) {{
       return STAT_DEFAULT_TEMPLATES[metric] || "Members: {{value}}";
+    }}
+
+    function metricNeedsTarget(metric) {{
+      return metric === "twitch_followers";
+    }}
+
+    function updateStatsTargetVisibility() {{
+      const shouldShow = metricNeedsTarget(statsMetricSelect.value);
+      statsTargetField.classList.toggle("hidden", !shouldShow);
+      statsTargetInput.toggleAttribute("required", shouldShow);
     }}
 
     function defaultAvatarUrl() {{
@@ -951,9 +969,11 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
     function resetStatsForm() {{
       statsMetricSelect.value = "members_total";
       statsCategorySelect.value = "";
+      statsTargetInput.value = "";
       statsTemplateInput.value = getDefaultStatsTemplate(statsMetricSelect.value);
       statsStatusText.textContent = "Bereit.";
       setStatsError("");
+      updateStatsTargetVisibility();
     }}
 
     function resetVerificationForm() {{
@@ -1121,6 +1141,7 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
           </div>
           <div class="panel-meta">
             <div>Kategorie: <strong>${{escapeHtml(entry.category_name || "Keine Kategorie")}}</strong></div>
+            <div>Target: <strong>${{escapeHtml(entry.source_target || "-")}}</strong></div>
             <div>Template: <code>${{escapeHtml(entry.template || "")}}</code></div>
           </div>
           <div class="button-row" style="margin-top:14px;">
@@ -1440,6 +1461,7 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
       const payload = {{
         metric_type: statsMetricSelect.value,
         category_id: statsCategorySelect.value,
+        source_target: statsTargetInput.value.trim(),
         template: statsTemplateInput.value.trim(),
       }};
 
@@ -1453,6 +1475,12 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
         setError("Bitte zuerst eine Stats-Metrik auswaehlen.");
         setStatsError("Bitte zuerst eine Stats-Metrik auswaehlen.");
         statsStatusText.textContent = "Metrik fehlt.";
+        return;
+      }}
+      if (metricNeedsTarget(payload.metric_type) && !payload.source_target) {{
+        setError("Bitte einen Twitch Kanalnamen eintragen.");
+        setStatsError("Bitte einen Twitch Kanalnamen eintragen.");
+        statsStatusText.textContent = "Target fehlt.";
         return;
       }}
 
@@ -1919,6 +1947,7 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
     resetStatsButton.addEventListener("click", resetStatsForm);
     statsMetricSelect.addEventListener("change", () => {{
       statsTemplateInput.value = getDefaultStatsTemplate(statsMetricSelect.value);
+      updateStatsTargetVisibility();
     }});
     document.getElementById("saveTicketPanelButton").addEventListener("click", saveTicketPanel);
     cancelTicketEditButton.addEventListener("click", resetTicketForm);
