@@ -365,24 +365,19 @@ def _build_ticket_panel_embed(
     title: str,
     description_text: str,
     show_category_hint: bool = False,
-    show_topic_hint: bool = False,
+    topic_options: list[str] | None = None,
 ) -> discord.Embed:
     embed = discord.Embed(title=title, description=description_text, color=discord.Color.blurple())
-    embed.add_field(
-        name=bot.localization.translate("tickets.panel_field_name", language=language),  # type: ignore[attr-defined]
-        value=bot.localization.translate("tickets.panel_field_value", language=language),  # type: ignore[attr-defined]
-        inline=False,
-    )
     if show_category_hint:
         embed.add_field(
             name=bot.localization.translate("tickets.panel_category_field_name", language=language),  # type: ignore[attr-defined]
             value=bot.localization.translate("tickets.panel_category_field_value", language=language),  # type: ignore[attr-defined]
             inline=False,
         )
-    if show_topic_hint:
+    if topic_options:
         embed.add_field(
             name=bot.localization.translate("tickets.panel_topic_field_name", language=language),  # type: ignore[attr-defined]
-            value=bot.localization.translate("tickets.panel_topic_field_value", language=language),  # type: ignore[attr-defined]
+            value="\n".join(f"• {topic}" for topic in topic_options),
             inline=False,
         )
     return embed
@@ -1244,7 +1239,7 @@ async def create_ticket_panel(request: web.Request) -> web.Response:
             title=title,
             description_text=description_text,
             show_category_hint=len(category_ids) > 1,
-            show_topic_hint=bool(topic_options),
+            topic_options=topic_options,
         )
         message = await channel.send(embed=embed, view=TicketCreateView())
         panel = await ticket_repo.create_panel(
@@ -1509,7 +1504,7 @@ async def update_ticket_panel(request: web.Request) -> web.Response:
             title=title,
             description_text=description_text,
             show_category_hint=len(category_ids) > 1,
-            show_topic_hint=bool(topic_options),
+            topic_options=topic_options,
         )
 
         final_message_id = panel.message_id

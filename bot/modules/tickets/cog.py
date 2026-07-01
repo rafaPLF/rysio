@@ -114,15 +114,10 @@ class TicketsGroup(app_commands.Group):
                 return
 
         embed = discord.Embed(title=title, description=description_text, color=discord.Color.blurple())
-        embed.add_field(
-            name=interaction.client.localization.translate("tickets.panel_field_name", language=language),  # type: ignore[attr-defined]
-            value=interaction.client.localization.translate("tickets.panel_field_value", language=language),  # type: ignore[attr-defined]
-            inline=False,
-        )
         if topic_options:
             embed.add_field(
                 name=interaction.client.localization.translate("tickets.panel_topic_field_name", language=language),  # type: ignore[attr-defined]
-                value=interaction.client.localization.translate("tickets.panel_topic_field_value", language=language),  # type: ignore[attr-defined]
+                value="\n".join(f"• {topic}" for topic in topic_options),
                 inline=False,
             )
         message = await interaction.channel.send(embed=embed, view=TicketCreateView())
