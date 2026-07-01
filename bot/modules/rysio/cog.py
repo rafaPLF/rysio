@@ -212,6 +212,11 @@ def build_help_embed(bot: commands.Bot, language: str) -> discord.Embed:
         inline=False,
     )
     embed.add_field(
+        name="Stats",
+        value="`/stats add`\n`/stats list`\n`/stats remove`\n`/stats refresh`",
+        inline=False,
+    )
+    embed.add_field(
         name="Logs",
         value="`/logs status`\n`/logs setup`\n`/logs disable`",
         inline=False,

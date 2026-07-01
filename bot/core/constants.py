@@ -3,6 +3,7 @@ INITIAL_EXTENSIONS = (
     "bot.modules.rysio.cog",
     "bot.modules.reaction_roles.cog",
     "bot.modules.join_to_create.cog",
+    "bot.modules.stats.cog",
     "bot.modules.logs.cog",
     "bot.modules.welcome.cog",
     "bot.modules.autoroles.cog",
