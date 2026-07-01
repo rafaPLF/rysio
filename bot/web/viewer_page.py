@@ -292,6 +292,7 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
           <div class="sidebar-title">Navigation</div>
           <div class="sidebar-nav">
             <button class="nav-button active" type="button" data-nav-view="overview"><span>Overview</span><span>Start</span></button>
+            <button class="nav-button" type="button" data-nav-view="stats"><span>Stats</span><span>Voice</span></button>
             <button class="nav-button" type="button" data-nav-view="notifications"><span>Notifications</span><span>Live</span></button>
             <button class="nav-button" type="button" data-nav-view="verification"><span>Verification</span><span>Access</span></button>
             <button class="nav-button" type="button" data-nav-view="tickets"><span>Tickets</span><span>Support</span></button>
@@ -352,9 +353,58 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
         <section class="metrics panel-view" data-panel-view="overview">
           <article class="metric"><h3>Verwaltbare Server</h3><div class="metric-value" id="guildCountStat">0</div><p class="muted">Kommt direkt aus deinem Discord Login.</p></article>
           <article class="metric"><h3>Notifications</h3><div class="metric-value" id="notificationCountStat">0</div><p class="muted">Twitch, Kick und YouTube pro Server.</p></article>
+          <article class="metric"><h3>Stats-Channels</h3><div class="metric-value" id="statsCountStat">0</div><p class="muted">Voice-Stats fuer Mitglieder und Online-Zahlen.</p></article>
           <article class="metric"><h3>Ticket-Panels</h3><div class="metric-value" id="ticketPanelCountStat">0</div><p class="muted">Panels fuer den aktuell ausgewaehlten Server.</p></article>
           <article class="metric"><h3>Offene Tickets</h3><div class="metric-value" id="activeTicketCountStat">0</div><p class="muted">Open, claimed und waiting_user im Web.</p></article>
           <article class="metric"><h3>Geladene Logs</h3><div class="metric-value" id="loadedStat">0</div><p class="muted">Audit-Logs bleiben parallel nutzbar.</p></article>
+        </section>
+        <section class="card panel-view hidden" data-panel-view="stats">
+          <div class="panel-head">
+            <div>
+              <h2 class="panel-view-title">Stats</h2>
+              <p class="muted">Erstelle Voice-Stats fuer Mitglieder, Bots oder Online-Zahlen direkt aus der Console.</p>
+            </div>
+            <span class="panel-tag">Voice Stats</span>
+          </div>
+          <div class="ticket-grid">
+            <section class="card">
+              <h3>Neuen Stats-Channel anlegen</h3>
+              <div class="stack">
+                <div>
+                  <label for="statsMetricSelect">Metrik</label>
+                  <select id="statsMetricSelect">
+                    <option value="members_total">Alle Mitglieder</option>
+                    <option value="members_humans">Nur Mitglieder</option>
+                    <option value="members_bots">Nur Bots</option>
+                    <option value="members_online">Online Mitglieder</option>
+                  </select>
+                </div>
+                <div>
+                  <label for="statsCategorySelect">Kategorie</label>
+                  <select id="statsCategorySelect">
+                    <option value="">Keine Kategorie</option>
+                  </select>
+                </div>
+                <div>
+                  <label for="statsTemplateInput">Anzeige-Template</label>
+                  <input id="statsTemplateInput" placeholder="z. B. Online Members: {value}">
+                </div>
+              </div>
+              <div class="button-row" style="margin-top:14px;">
+                <button id="saveStatsButton" type="button">Stats speichern</button>
+                <button id="refreshStatsButton" type="button" class="ghost">Jetzt aktualisieren</button>
+                <button id="resetStatsButton" type="button" class="ghost">Formular zuruecksetzen</button>
+              </div>
+              <p id="statsStatusText" class="meta" style="margin-top:12px;">Bereit.</p>
+              <p id="statsErrorText" class="error" hidden style="margin-top:8px;"></p>
+            </section>
+            <section class="card">
+              <h3>Bestehende Stats-Channels</h3>
+              <div id="statsList" class="panel-list">
+                <div class="empty">Noch kein Server geladen.</div>
+              </div>
+            </section>
+          </div>
         </section>
         <section class="card panel-view hidden" data-panel-view="notifications">
           <div class="panel-head">
@@ -605,6 +655,7 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
     const loadedStat = document.getElementById("loadedStat");
     const guildCountStat = document.getElementById("guildCountStat");
     const notificationCountStat = document.getElementById("notificationCountStat");
+    const statsCountStat = document.getElementById("statsCountStat");
     const ticketPanelCountStat = document.getElementById("ticketPanelCountStat");
     const activeTicketCountStat = document.getElementById("activeTicketCountStat");
     const entries = document.getElementById("entries");
@@ -646,6 +697,15 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
     const notificationTargetInput = document.getElementById("notificationTargetInput");
     const notificationChannelSelect = document.getElementById("notificationChannelSelect");
     const notificationMentionRoleSelect = document.getElementById("notificationMentionRoleSelect");
+    const statsMetricSelect = document.getElementById("statsMetricSelect");
+    const statsCategorySelect = document.getElementById("statsCategorySelect");
+    const statsTemplateInput = document.getElementById("statsTemplateInput");
+    const statsList = document.getElementById("statsList");
+    const saveStatsButton = document.getElementById("saveStatsButton");
+    const refreshStatsButton = document.getElementById("refreshStatsButton");
+    const resetStatsButton = document.getElementById("resetStatsButton");
+    const statsStatusText = document.getElementById("statsStatusText");
+    const statsErrorText = document.getElementById("statsErrorText");
     const notificationList = document.getElementById("notificationList");
     const notificationFormHeading = document.getElementById("notificationFormHeading");
     const saveNotificationButton = document.getElementById("saveNotificationButton");
@@ -675,12 +735,23 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
     let editingPanelId = null;
     let editingNotificationId = null;
 
+    const STAT_DEFAULT_TEMPLATES = {{
+      members_total: "All Members: {{value}}",
+      members_humans: "Members: {{value}}",
+      members_bots: "Bots: {{value}}",
+      members_online: "Online Members: {{value}}",
+    }};
+
     function escapeHtml(value) {{
       return String(value).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#39;");
     }}
 
     function normalizeBaseUrl(value) {{
       return value.trim().replace(/\\/$/, "");
+    }}
+
+    function getDefaultStatsTemplate(metric) {{
+      return STAT_DEFAULT_TEMPLATES[metric] || "Members: {{value}}";
     }}
 
     function defaultAvatarUrl() {{
@@ -833,6 +904,16 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
       notificationErrorText.textContent = message;
     }}
 
+    function setStatsError(message) {{
+      if (!message) {{
+        statsErrorText.hidden = true;
+        statsErrorText.textContent = "";
+        return;
+      }}
+      statsErrorText.hidden = false;
+      statsErrorText.textContent = message;
+    }}
+
     function setVerificationError(message) {{
       if (!message) {{
         verificationErrorText.hidden = true;
@@ -865,6 +946,14 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
       notificationMentionRoleSelect.value = "";
       notificationStatusText.textContent = "Bereit.";
       setNotificationError("");
+    }}
+
+    function resetStatsForm() {{
+      statsMetricSelect.value = "members_total";
+      statsCategorySelect.value = "";
+      statsTemplateInput.value = getDefaultStatsTemplate(statsMetricSelect.value);
+      statsStatusText.textContent = "Bereit.";
+      setStatsError("");
     }}
 
     function resetVerificationForm() {{
@@ -1017,6 +1106,36 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
       }}
     }}
 
+    function renderStats(stats) {{
+      statsCountStat.textContent = String(stats.length);
+      if (!stats.length) {{
+        statsList.innerHTML = '<div class="empty">Noch keine Stats-Channels fuer diesen Server gefunden.</div>';
+        return;
+      }}
+
+      statsList.innerHTML = stats.map((entry) => `
+        <article class="panel-card">
+          <div class="panel-head">
+            <strong>${{escapeHtml(entry.channel_name)}}</strong>
+            <span class="panel-tag">${{escapeHtml(entry.metric_type)}}</span>
+          </div>
+          <div class="panel-meta">
+            <div>Kategorie: <strong>${{escapeHtml(entry.category_name || "Keine Kategorie")}}</strong></div>
+            <div>Template: <code>${{escapeHtml(entry.template || "")}}</code></div>
+          </div>
+          <div class="button-row" style="margin-top:14px;">
+            <button type="button" class="danger-button" data-delete-stat-channel-id="${{entry.channel_id}}">Loeschen</button>
+          </div>
+        </article>
+      `).join("");
+
+      for (const button of statsList.querySelectorAll("[data-delete-stat-channel-id]")) {{
+        button.addEventListener("click", () => {{
+          deleteStatChannel(button.getAttribute("data-delete-stat-channel-id"));
+        }});
+      }}
+    }}
+
     function renderTicketPanels(panels) {{
       ticketPanelCountStat.textContent = String(panels.length);
       if (!panels.length) {{
@@ -1161,11 +1280,17 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
       }}
 
       ticketCategorySelect.innerHTML = '<option value="">Keine Kategorie</option>';
+      statsCategorySelect.innerHTML = '<option value="">Keine Kategorie</option>';
       for (const category of overview.categories || []) {{
         const option = document.createElement("option");
         option.value = category.id;
         option.textContent = category.name;
         ticketCategorySelect.appendChild(option);
+
+        const statsOption = document.createElement("option");
+        statsOption.value = category.id;
+        statsOption.textContent = category.name;
+        statsCategorySelect.appendChild(statsOption);
       }}
 
       ticketSupportRoleSelect.innerHTML = '<option value="">Keine Support Rolle</option>';
@@ -1188,10 +1313,12 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
         verificationRoleSelect.appendChild(verificationRoleOption);
       }}
 
+      renderStats(overview.stats || []);
       renderNotifications(overview.notifications || []);
       renderVerification(overview.verification || null);
       renderTicketPanels(overview.ticket_panels || []);
       renderActiveTickets(overview.active_tickets || []);
+      resetStatsForm();
       resetVerificationForm();
     }}
 
@@ -1264,13 +1391,16 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
         currentOverview = null;
         selectedGuildIdText.textContent = "-";
         selectedGuildNameText.textContent = "Noch kein Server ausgewaehlt.";
+        statsList.innerHTML = '<div class="empty">Waehle zuerst einen Server aus.</div>';
         notificationList.innerHTML = '<div class="empty">Waehle zuerst einen Server aus.</div>';
         verificationCurrentCard.innerHTML = '<div class="empty">Waehle zuerst einen Server aus.</div>';
         ticketPanelsList.innerHTML = '<div class="empty">Waehle zuerst einen Server aus.</div>';
         activeTicketsList.innerHTML = '<div class="empty">Waehle zuerst einen Server aus.</div>';
+        statsCountStat.textContent = "0";
         notificationCountStat.textContent = "0";
         ticketPanelCountStat.textContent = "0";
         activeTicketCountStat.textContent = "0";
+        resetStatsForm();
         resetTicketForm();
         resetNotificationForm();
         resetVerificationForm();
@@ -1287,21 +1417,129 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
         const payload = await response.json();
         if (!response.ok) throw new Error(payload.error || `HTTP ${{response.status}}`);
         renderOverview(payload);
-        resetTicketForm();
-        resetNotificationForm();
-        resetVerificationForm();
         statusText.textContent = `Serverdaten fuer ${{payload.guild.name}} geladen.`;
       }} catch (error) {{
         currentOverview = null;
+        statsList.innerHTML = '<div class="empty">Stats konnten nicht geladen werden.</div>';
         notificationList.innerHTML = '<div class="empty">Notifications konnten nicht geladen werden.</div>';
         verificationCurrentCard.innerHTML = '<div class="empty">Verification konnte nicht geladen werden.</div>';
         ticketPanelsList.innerHTML = '<div class="empty">Serverdaten konnten nicht geladen werden.</div>';
         activeTicketsList.innerHTML = '<div class="empty">Tickets konnten nicht geladen werden.</div>';
+        statsCountStat.textContent = "0";
         notificationCountStat.textContent = "0";
         ticketPanelCountStat.textContent = "0";
         activeTicketCountStat.textContent = "0";
         setError(`Serverdaten fehlgeschlagen: ${{error.message}}`);
         statusText.textContent = "Fehler beim Laden der Serverdaten.";
+      }}
+    }}
+
+    async function saveStats() {{
+      const guildId = guildSelect.value;
+      const apiBaseUrl = normalizeBaseUrl(apiBaseUrlInput.value || DEFAULT_API_BASE_URL);
+      const payload = {{
+        metric_type: statsMetricSelect.value,
+        category_id: statsCategorySelect.value,
+        template: statsTemplateInput.value.trim(),
+      }};
+
+      if (!guildId) {{
+        setError("Bitte zuerst einen Discord Server auswaehlen.");
+        setStatsError("Bitte zuerst einen Discord Server auswaehlen.");
+        statsStatusText.textContent = "Stats konnten nicht gespeichert werden.";
+        return;
+      }}
+      if (!payload.metric_type) {{
+        setError("Bitte zuerst eine Stats-Metrik auswaehlen.");
+        setStatsError("Bitte zuerst eine Stats-Metrik auswaehlen.");
+        statsStatusText.textContent = "Metrik fehlt.";
+        return;
+      }}
+
+      setError("");
+      setStatsError("");
+      statusText.textContent = "Stats-Channel wird erstellt...";
+      statsStatusText.textContent = "Stats-Channel wird erstellt...";
+      try {{
+        const response = await fetch(`${{apiBaseUrl}}/api/guilds/${{guildId}}/stats`, {{
+          method: "POST",
+          headers: {{
+            ...getAuthHeaders(),
+            "Content-Type": "application/json",
+          }},
+          body: JSON.stringify(payload),
+        }});
+        const body = await response.json();
+        if (!response.ok) throw new Error(body.error || `HTTP ${{response.status}}`);
+        await loadOverview();
+        resetStatsForm();
+        statusText.textContent = "Stats-Channel gespeichert.";
+        statsStatusText.textContent = "Stats-Channel gespeichert.";
+      }} catch (error) {{
+        setError(`Stats fehlgeschlagen: ${{error.message}}`);
+        setStatsError(`Stats fehlgeschlagen: ${{error.message}}`);
+        statusText.textContent = "Stats konnten nicht gespeichert werden.";
+        statsStatusText.textContent = "Stats konnten nicht gespeichert werden.";
+      }}
+    }}
+
+    async function refreshStatsNow() {{
+      const guildId = guildSelect.value;
+      const apiBaseUrl = normalizeBaseUrl(apiBaseUrlInput.value || DEFAULT_API_BASE_URL);
+      if (!guildId) {{
+        setError("Bitte zuerst einen Discord Server auswaehlen.");
+        setStatsError("Bitte zuerst einen Discord Server auswaehlen.");
+        statsStatusText.textContent = "Kein Server ausgewaehlt.";
+        return;
+      }}
+
+      setError("");
+      setStatsError("");
+      statusText.textContent = "Stats werden aktualisiert...";
+      statsStatusText.textContent = "Stats werden aktualisiert...";
+      try {{
+        const response = await fetch(`${{apiBaseUrl}}/api/guilds/${{guildId}}/stats/refresh`, {{
+          method: "POST",
+          headers: getAuthHeaders(),
+        }});
+        const body = await response.json();
+        if (!response.ok) throw new Error(body.error || `HTTP ${{response.status}}`);
+        await loadOverview();
+        statusText.textContent = `Stats aktualisiert. Channels geprueft: ${{body.updated ?? 0}}.`;
+        statsStatusText.textContent = `Stats aktualisiert. Channels geprueft: ${{body.updated ?? 0}}.`;
+      }} catch (error) {{
+        setError(`Stats-Refresh fehlgeschlagen: ${{error.message}}`);
+        setStatsError(`Stats-Refresh fehlgeschlagen: ${{error.message}}`);
+        statusText.textContent = "Stats-Refresh fehlgeschlagen.";
+        statsStatusText.textContent = "Stats-Refresh fehlgeschlagen.";
+      }}
+    }}
+
+    async function deleteStatChannel(channelId) {{
+      const guildId = guildSelect.value;
+      const apiBaseUrl = normalizeBaseUrl(apiBaseUrlInput.value || DEFAULT_API_BASE_URL);
+      if (!guildId || !channelId) return;
+      if (!window.confirm("Diesen Stats-Channel wirklich loeschen?")) return;
+
+      setError("");
+      setStatsError("");
+      statusText.textContent = "Stats-Channel wird geloescht...";
+      statsStatusText.textContent = "Stats-Channel wird geloescht...";
+      try {{
+        const response = await fetch(`${{apiBaseUrl}}/api/guilds/${{guildId}}/stats/${{channelId}}`, {{
+          method: "DELETE",
+          headers: getAuthHeaders(),
+        }});
+        const body = await response.json();
+        if (!response.ok) throw new Error(body.error || `HTTP ${{response.status}}`);
+        await loadOverview();
+        statusText.textContent = "Stats-Channel geloescht.";
+        statsStatusText.textContent = "Stats-Channel geloescht.";
+      }} catch (error) {{
+        setError(`Stats-Loeschen fehlgeschlagen: ${{error.message}}`);
+        setStatsError(`Stats-Loeschen fehlgeschlagen: ${{error.message}}`);
+        statusText.textContent = "Stats-Channel konnte nicht geloescht werden.";
+        statsStatusText.textContent = "Stats-Channel konnte nicht geloescht werden.";
       }}
     }}
 
@@ -1676,6 +1914,12 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
     }});
     document.getElementById("saveButton").addEventListener("click", saveState);
     document.getElementById("reloadOverviewButton").addEventListener("click", loadOverview);
+    saveStatsButton.addEventListener("click", saveStats);
+    refreshStatsButton.addEventListener("click", refreshStatsNow);
+    resetStatsButton.addEventListener("click", resetStatsForm);
+    statsMetricSelect.addEventListener("change", () => {{
+      statsTemplateInput.value = getDefaultStatsTemplate(statsMetricSelect.value);
+    }});
     document.getElementById("saveTicketPanelButton").addEventListener("click", saveTicketPanel);
     cancelTicketEditButton.addEventListener("click", resetTicketForm);
     saveNotificationButton.addEventListener("click", saveNotification);
@@ -1699,13 +1943,16 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
       guildSelect.value = "";
       selectedGuildIdText.textContent = "-";
       selectedGuildNameText.textContent = "Noch kein Server ausgewaehlt.";
+      statsList.innerHTML = '<div class="empty">Discord-Session getrennt.</div>';
       notificationList.innerHTML = '<div class="empty">Discord-Session getrennt.</div>';
       verificationCurrentCard.innerHTML = '<div class="empty">Discord-Session getrennt.</div>';
       ticketPanelsList.innerHTML = '<div class="empty">Discord-Session getrennt.</div>';
       activeTicketsList.innerHTML = '<div class="empty">Discord-Session getrennt.</div>';
+      statsCountStat.textContent = "0";
       notificationCountStat.textContent = "0";
       ticketPanelCountStat.textContent = "0";
       activeTicketCountStat.textContent = "0";
+      resetStatsForm();
       resetTicketForm();
       resetNotificationForm();
       resetVerificationForm();
@@ -1721,13 +1968,16 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
       currentPanelView = "overview";
       selectedGuildIdText.textContent = "-";
       selectedGuildNameText.textContent = "Noch kein Server ausgewaehlt.";
+      statsList.innerHTML = '<div class="empty">Waehle zuerst einen Server aus.</div>';
       notificationList.innerHTML = '<div class="empty">Waehle zuerst einen Server aus.</div>';
       verificationCurrentCard.innerHTML = '<div class="empty">Waehle zuerst einen Server aus.</div>';
       ticketPanelsList.innerHTML = '<div class="empty">Waehle zuerst einen Server aus.</div>';
       activeTicketsList.innerHTML = '<div class="empty">Waehle zuerst einen Server aus.</div>';
+      statsCountStat.textContent = "0";
       notificationCountStat.textContent = "0";
       ticketPanelCountStat.textContent = "0";
       activeTicketCountStat.textContent = "0";
+      resetStatsForm();
       resetTicketForm();
       resetNotificationForm();
       resetVerificationForm();
@@ -1767,6 +2017,7 @@ def render_logs_viewer_page(api_base_url: str = "") -> str:
     siteNoticeClose.addEventListener("click", hideSiteNotice);
 
     loadSavedState();
+    resetStatsForm();
     setActivePanelView(currentPanelView);
     readHashState();
     fetchPanelSession().then(() => {{

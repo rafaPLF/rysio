@@ -11,10 +11,12 @@ from bot.database.repositories.audit_log_repo import AuditLogRepository
 from bot.database.repositories.guild_repo import GuildRepository
 from bot.database.repositories.notification_repo import NotificationSubscriptionRepository
 from bot.database.repositories.premium_repo import PremiumRepository
+from bot.database.repositories.stat_channel_repo import StatChannelRepository
 from bot.database.repositories.ticket_note_repo import TicketNoteRepository
 from bot.database.repositories.ticket_repo import TicketRepository
 from bot.database.repositories.verification_repo import VerificationRepository
 from bot.database.session import DatabaseSessionManager
+from bot.modules.stats.service import StatsService
 from bot.modules.notifications.service import NotificationService
 from bot.modules.tickets.views import MAX_OPEN_TICKETS_PER_USER, TicketCreateView
 from bot.modules.verification.views import VerificationView
@@ -265,6 +267,21 @@ def _serialize_join_to_create_settings(settings, guild: discord.Guild) -> dict[s
         "lobby_channel_name": lobby.name if isinstance(lobby, discord.VoiceChannel) else None,
         "category_id": str(settings.join_to_create_category_id) if settings and settings.join_to_create_category_id else None,
         "category_name": category.name if isinstance(category, discord.CategoryChannel) else None,
+    }
+
+
+def _serialize_stat_channel(entry, guild: discord.Guild) -> dict[str, Any]:
+    channel = guild.get_channel(entry.channel_id)
+    category = guild.get_channel(entry.category_id) if entry.category_id else None
+    return {
+        "id": entry.id,
+        "channel_id": str(entry.channel_id),
+        "channel_name": channel.name if isinstance(channel, discord.VoiceChannel) else f"stat-{entry.channel_id}",
+        "category_id": str(entry.category_id) if entry.category_id else None,
+        "category_name": category.name if isinstance(category, discord.CategoryChannel) else None,
+        "metric_type": entry.metric_type,
+        "template": entry.template,
+        "enabled": bool(entry.enabled),
     }
 
 
@@ -616,12 +633,14 @@ async def get_guild_overview(request: web.Request) -> web.Response:
     async with database.session() as session:
         guild_repo = GuildRepository(session)
         notification_repo = NotificationSubscriptionRepository(session)
+        stat_repo = StatChannelRepository(session)
         ticket_repo = TicketRepository(session)
         note_repo = TicketNoteRepository(session)
         verification_repo = VerificationRepository(session)
         settings = await guild_repo.ensure_settings(guild.id)
         verification = await verification_repo.get_settings(guild.id)
         notifications = await notification_repo.list_for_guild(guild.id)
+        stats = await stat_repo.list_for_guild(guild.id)
         panels = await ticket_repo.get_panels_for_guild(guild.id)
         active_tickets = await ticket_repo.get_active_tickets_for_guild(guild.id)
         closed_tickets = await ticket_repo.get_recent_closed_tickets_for_guild(guild.id, limit=25)
@@ -665,6 +684,7 @@ async def get_guild_overview(request: web.Request) -> web.Response:
             key=lambda item: (-item["position"], item["name"].lower()),
         ),
         "notifications": [_serialize_notification_subscription(subscription, guild) for subscription in notifications],
+        "stats": [_serialize_stat_channel(entry, guild) for entry in stats],
         "verification": _serialize_verification_settings(verification, guild, enabled=bool(settings.verification_enabled)),
         "welcome": _serialize_welcome_settings(settings, guild),
         "join_to_create": _serialize_join_to_create_settings(settings, guild),
@@ -704,6 +724,115 @@ async def get_ticket_transcript(request: web.Request) -> web.Response:
         return web.json_response({"error": "transcript_file_missing"}, status=404)
 
     return web.FileResponse(path=transcript_path)
+
+
+async def get_guild_stats(request: web.Request) -> web.Response:
+    guild = await _get_authorized_guild(request)
+    if guild is None:
+        return _forbidden("guild_access_denied")
+    if not await _session_can_manage_guild(request, guild):
+        return _forbidden("manage_guild_required")
+
+    database: DatabaseSessionManager = request.app["database"]
+    async with database.session() as session:
+        repo = StatChannelRepository(session)
+        entries = await repo.list_for_guild(guild.id)
+
+    return web.json_response({"stats": [_serialize_stat_channel(entry, guild) for entry in entries]})
+
+
+async def create_guild_stat(request: web.Request) -> web.Response:
+    guild = await _get_authorized_guild(request)
+    if guild is None:
+        return _forbidden("guild_access_denied")
+    if not await _session_can_manage_guild(request, guild):
+        return _forbidden("manage_guild_required")
+
+    bot = request.app["bot"]
+    stats_service: StatsService = request.app["stats_service"]
+    payload = await request.json()
+
+    metric_type = str(payload.get("metric_type") or "").strip()
+    template = str(payload.get("template") or "").strip() or None
+    raw_category_id = str(payload.get("category_id") or "").strip()
+
+    category: discord.CategoryChannel | None = None
+    if raw_category_id:
+        try:
+            category_id = int(raw_category_id)
+        except ValueError:
+            return web.json_response({"error": "invalid_category_id"}, status=400)
+        category = guild.get_channel(category_id)
+        if not isinstance(category, discord.CategoryChannel):
+            return web.json_response({"error": "category_not_found"}, status=404)
+
+    me = guild.me
+    if me is None or not guild.me.guild_permissions.manage_channels:
+        return web.json_response({"error": "bot_missing_manage_channels"}, status=403)
+
+    try:
+        entry, _channel = await stats_service.create_stat_channel(
+            bot,
+            guild=guild,
+            metric=metric_type,
+            category=category,
+            template=template,
+        )
+    except ValueError as exc:
+        return web.json_response({"error": str(exc)}, status=400)
+    except discord.Forbidden:
+        return web.json_response({"error": "bot_missing_permissions"}, status=403)
+    except discord.HTTPException:
+        return web.json_response({"error": "stats_channel_create_failed"}, status=500)
+
+    return web.json_response({"created": True, "stat": _serialize_stat_channel(entry, guild)}, status=201)
+
+
+async def delete_guild_stat(request: web.Request) -> web.Response:
+    guild = await _get_authorized_guild(request)
+    if guild is None:
+        return _forbidden("guild_access_denied")
+    if not await _session_can_manage_guild(request, guild):
+        return _forbidden("manage_guild_required")
+
+    try:
+        channel_id = int(request.match_info["channel_id"])
+    except ValueError:
+        return web.json_response({"error": "invalid_channel_id"}, status=400)
+
+    database: DatabaseSessionManager = request.app["database"]
+    async with database.session() as session:
+        repo = StatChannelRepository(session)
+        entry = await repo.get_by_channel_id(channel_id)
+        if entry is None or entry.guild_id != guild.id:
+            return web.json_response({"error": "stat_not_found"}, status=404)
+
+    stats_service: StatsService = request.app["stats_service"]
+    removed = await stats_service.remove_stat_channel(request.app["bot"], channel_id=channel_id, delete_channel=True)
+    return web.json_response({"deleted": removed > 0})
+
+
+async def refresh_guild_stats(request: web.Request) -> web.Response:
+    guild = await _get_authorized_guild(request)
+    if guild is None:
+        return _forbidden("guild_access_denied")
+    if not await _session_can_manage_guild(request, guild):
+        return _forbidden("manage_guild_required")
+
+    stats_service: StatsService = request.app["stats_service"]
+    updated = await stats_service.refresh_guild(request.app["bot"], guild)
+
+    database: DatabaseSessionManager = request.app["database"]
+    async with database.session() as session:
+        repo = StatChannelRepository(session)
+        entries = await repo.list_for_guild(guild.id)
+
+    return web.json_response(
+        {
+            "updated": updated,
+            "stats": [_serialize_stat_channel(entry, guild) for entry in entries],
+        }
+    )
 
 
 async def delete_ticket_transcript(request: web.Request) -> web.Response:
@@ -1924,6 +2053,7 @@ def create_web_app(database: DatabaseSessionManager, api_token: str, allowed_ori
     app["oauth_states"] = {}
     app["panel_sessions"] = {}
     app["notification_service"] = NotificationService()
+    app["stats_service"] = StatsService()
     app["oauth_settings"] = create_oauth_settings(
         client_id=getattr(bot.settings, "discord_client_id", "") if bot is not None else "",
         client_secret=getattr(bot.settings, "discord_client_secret", "") if bot is not None else "",
@@ -1940,6 +2070,10 @@ def create_web_app(database: DatabaseSessionManager, api_token: str, allowed_ori
     app.router.add_put("/api/admin/guilds/{guild_id:\\d+}/premium", update_admin_guild_premium)
     app.router.add_get("/api/guilds/{guild_id:\\d+}/logs", get_guild_logs)
     app.router.add_get("/api/guilds/{guild_id:\\d+}/overview", get_guild_overview)
+    app.router.add_get("/api/guilds/{guild_id:\\d+}/stats", get_guild_stats)
+    app.router.add_post("/api/guilds/{guild_id:\\d+}/stats", create_guild_stat)
+    app.router.add_post("/api/guilds/{guild_id:\\d+}/stats/refresh", refresh_guild_stats)
+    app.router.add_delete("/api/guilds/{guild_id:\\d+}/stats/{channel_id:\\d+}", delete_guild_stat)
     app.router.add_get("/api/guilds/{guild_id:\\d+}/welcome", get_guild_welcome)
     app.router.add_put("/api/guilds/{guild_id:\\d+}/welcome", save_welcome_settings)
     app.router.add_delete("/api/guilds/{guild_id:\\d+}/welcome", delete_welcome_settings)
