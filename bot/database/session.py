@@ -106,6 +106,8 @@ class DatabaseSessionManager:
                 connection.execute(text("ALTER TABLE tickets ADD COLUMN closed_by_user_id BIGINT"))
             if "transcript_path" not in ticket_columns:
                 connection.execute(text("ALTER TABLE tickets ADD COLUMN transcript_path VARCHAR(500)"))
+            if "selected_topic" not in ticket_columns:
+                connection.execute(text("ALTER TABLE tickets ADD COLUMN selected_topic VARCHAR(255)"))
 
         if "ticket_panels" in tables:
             ticket_panel_columns = {column["name"] for column in inspector.get_columns("ticket_panels")}
@@ -115,5 +117,7 @@ class DatabaseSessionManager:
                 connection.execute(text("ALTER TABLE ticket_panels ADD COLUMN description_text TEXT DEFAULT 'Klicke unten auf den Button, um ein Ticket zu erstellen.'"))
             if "category_ids_json" not in ticket_panel_columns:
                 connection.execute(text("ALTER TABLE ticket_panels ADD COLUMN category_ids_json TEXT"))
+            if "topic_options_json" not in ticket_panel_columns:
+                connection.execute(text("ALTER TABLE ticket_panels ADD COLUMN topic_options_json TEXT"))
             if "welcome_message" not in ticket_panel_columns:
                 connection.execute(text("ALTER TABLE ticket_panels ADD COLUMN welcome_message TEXT"))

@@ -47,6 +47,8 @@ class TicketService:
         )
         embed.add_field(name="Ticket-ID", value=f"`{ticket.id}`", inline=True)
         embed.add_field(name="Erstellt von", value=f"<@{ticket.user_id}>", inline=True)
+        if getattr(ticket, "selected_topic", None):
+            embed.add_field(name="Thema", value=f"`{ticket.selected_topic}`", inline=True)
         return embed
 
     async def refresh_ticket_status_message(

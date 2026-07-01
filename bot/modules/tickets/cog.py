@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 import discord
 from discord import app_commands
 from discord.ext import commands
@@ -9,6 +11,17 @@ from bot.database.repositories.ticket_repo import TicketRepository
 from bot.modules.tickets.service import TicketService
 from bot.modules.tickets.views import TicketCreateView
 from bot.utils.access import can_manage_guild, can_use_moderation, has_owner_bypass
+
+
+def _parse_ticket_topics(raw_value: str | None) -> list[str]:
+    if not raw_value:
+        return []
+    topics: list[str] = []
+    for raw_topic in raw_value.split(","):
+        topic = raw_topic.strip()
+        if topic and topic not in topics:
+            topics.append(topic)
+    return topics[:25]
 
 
 class TicketsGroup(app_commands.Group):
@@ -34,6 +47,7 @@ class TicketsGroup(app_commands.Group):
         title="Titel des Panels",
         description_text="Kurze Beschreibung fuer Nutzer",
         category="Kategorie fuer neue Ticket-Channels",
+        topics="Optionale Themen, kommagetrennt, z. B. Bug, Finanzen, Bewerbung",
         support_role="Support-Rolle mit Zugriff auf Tickets",
         welcome_message="Optionale erste Auto-Nachricht im Ticket",
     )
@@ -43,6 +57,7 @@ class TicketsGroup(app_commands.Group):
         title: str,
         description_text: str,
         category: discord.CategoryChannel | None = None,
+        topics: str | None = None,
         support_role: discord.Role | None = None,
         welcome_message: str | None = None,
     ) -> None:
@@ -75,6 +90,7 @@ class TicketsGroup(app_commands.Group):
             interaction.client.database,
             interaction.guild.id,
         )
+        topic_options = _parse_ticket_topics(topics)
         await interaction.response.defer(ephemeral=True)
         await self.ticket_service.cleanup_stale_panels(interaction.client, interaction.guild)
 
@@ -103,6 +119,12 @@ class TicketsGroup(app_commands.Group):
             value=interaction.client.localization.translate("tickets.panel_field_value", language=language),  # type: ignore[attr-defined]
             inline=False,
         )
+        if topic_options:
+            embed.add_field(
+                name=interaction.client.localization.translate("tickets.panel_topic_field_name", language=language),  # type: ignore[attr-defined]
+                value=interaction.client.localization.translate("tickets.panel_topic_field_value", language=language),  # type: ignore[attr-defined]
+                inline=False,
+            )
         message = await interaction.channel.send(embed=embed, view=TicketCreateView())
 
         async with interaction.client.database.session() as session:  # type: ignore[attr-defined]
@@ -115,6 +137,7 @@ class TicketsGroup(app_commands.Group):
                 description_text=description_text,
                 category_id=category.id if category else None,
                 category_ids_json=f"[{category.id}]" if category else None,
+                topic_options_json=json.dumps(topic_options) if topic_options else None,
                 support_role_id=support_role.id if support_role else None,
                 welcome_message=welcome_message.strip() if welcome_message else None,
             )

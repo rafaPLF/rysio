@@ -41,6 +41,7 @@ class TicketRepository:
         description_text: str,
         category_id: int | None,
         category_ids_json: str | None,
+        topic_options_json: str | None,
         support_role_id: int | None,
         welcome_message: str | None,
     ) -> TicketPanel:
@@ -52,6 +53,7 @@ class TicketRepository:
             description_text=description_text,
             category_id=category_id,
             category_ids_json=category_ids_json,
+            topic_options_json=topic_options_json,
             support_role_id=support_role_id,
             welcome_message=welcome_message,
         )
@@ -69,6 +71,7 @@ class TicketRepository:
         description_text: str,
         category_id: int | None,
         category_ids_json: str | None,
+        topic_options_json: str | None,
         support_role_id: int | None,
         welcome_message: str | None,
     ) -> TicketPanel:
@@ -78,6 +81,7 @@ class TicketRepository:
         panel.description_text = description_text
         panel.category_id = category_id
         panel.category_ids_json = category_ids_json
+        panel.topic_options_json = topic_options_json
         panel.support_role_id = support_role_id
         panel.welcome_message = welcome_message
         await self.session.flush()
@@ -136,8 +140,22 @@ class TicketRepository:
         tickets = await self.get_open_tickets_for_user(guild_id, user_id)
         return len(tickets)
 
-    async def create_ticket(self, guild_id: int, channel_id: int, user_id: int, panel_id: int | None = None) -> Ticket:
-        ticket = Ticket(guild_id=guild_id, channel_id=channel_id, user_id=user_id, panel_id=panel_id, status="open")
+    async def create_ticket(
+        self,
+        guild_id: int,
+        channel_id: int,
+        user_id: int,
+        panel_id: int | None = None,
+        selected_topic: str | None = None,
+    ) -> Ticket:
+        ticket = Ticket(
+            guild_id=guild_id,
+            channel_id=channel_id,
+            user_id=user_id,
+            panel_id=panel_id,
+            selected_topic=selected_topic,
+            status="open",
+        )
         self.session.add(ticket)
         await self.session.flush()
         return ticket

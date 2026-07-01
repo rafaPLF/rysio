@@ -626,6 +626,10 @@
                   <label for="ticketWelcomeInput">Erste Auto-Nachricht im Ticket</label>
                   <textarea id="ticketWelcomeInput" placeholder="Optional: z. B. Hallo User, beschreibe bitte dein Anliegen."></textarea>
                 </div>
+                <div>
+                  <label for="ticketTopicsInput">Ticket Themen</label>
+                  <textarea id="ticketTopicsInput" placeholder="Optional: z. B. Bug, Finanzen, Bewerbung&#10;Ein Thema pro Zeile oder kommagetrennt."></textarea>
+                </div>
               </div>
               <div class="button-row" style="margin-top:14px;">
                 <button id="saveTicketPanelButton" type="button">Ticket-Panel erstellen</button>
@@ -788,6 +792,7 @@
     const ticketTitleInput = document.getElementById("ticketTitleInput");
     const ticketDescriptionInput = document.getElementById("ticketDescriptionInput");
     const ticketWelcomeInput = document.getElementById("ticketWelcomeInput");
+    const ticketTopicsInput = document.getElementById("ticketTopicsInput");
     const ticketPanelsList = document.getElementById("ticketPanelsList");
     const activeTicketsList = document.getElementById("activeTicketsList");
     const closedTicketsList = document.getElementById("closedTicketsList");
@@ -989,6 +994,7 @@
         ticketTitleInput.value = saved.ticketTitle || "Support Ticket";
         ticketDescriptionInput.value = saved.ticketDescription || "Klicke unten auf den Button, um ein Ticket zu erstellen.";
         ticketWelcomeInput.value = saved.ticketWelcome || "";
+        ticketTopicsInput.value = saved.ticketTopics || "";
         sessionToken = saved.sessionToken || "";
         preferredGuildId = saved.selectedGuildId || "";
         currentPanelView = saved.panelView || "overview";
@@ -1004,6 +1010,7 @@
         ticketTitle: ticketTitleInput.value,
         ticketDescription: ticketDescriptionInput.value,
         ticketWelcome: ticketWelcomeInput.value,
+        ticketTopics: ticketTopicsInput.value,
         sessionToken,
         selectedGuildId: preferredGuildId || guildSelect.value || "",
         panelView: currentPanelView,
@@ -1084,6 +1091,15 @@
       }
     }
 
+    function parseTopicOptions(value) {
+      return [...new Set(
+        String(value || "")
+          .split(/\r?\n|,/)
+          .map((entry) => entry.trim())
+          .filter(Boolean)
+      )].slice(0, 25);
+    }
+
     function resetTicketForm() {
       editingPanelId = null;
       ticketFormHeading.textContent = "Neues Ticket-Panel erstellen";
@@ -1094,6 +1110,7 @@
       ticketTitleInput.value = "Support Ticket";
       ticketDescriptionInput.value = "Klicke unten auf den Button, um ein Ticket zu erstellen.";
       ticketWelcomeInput.value = "";
+      ticketTopicsInput.value = "";
     }
 
     function resetNotificationForm() {
@@ -1153,6 +1170,7 @@
       ticketTitleInput.value = panel.title || "Support Ticket";
       ticketDescriptionInput.value = panel.description_text || "";
       ticketWelcomeInput.value = panel.welcome_message || "";
+      ticketTopicsInput.value = (panel.topic_options || []).join("\n");
       statusText.textContent = `Bearbeitungsmodus fuer Panel #${panel.id} aktiviert.`;
       window.scrollTo({ top: 0, behavior: "smooth" });
     }
@@ -1427,6 +1445,7 @@
             <div>Titel: <strong>${escapeHtml(panel.title || "Support Ticket")}</strong></div>
             <div>Beschreibung: ${escapeHtml(panel.description_text || "-")}</div>
             <div>Kategorien: ${escapeHtml((panel.category_names && panel.category_names.length ? panel.category_names.join(", ") : (panel.category_name || "Keine")))}</div>
+            <div>Themen: ${escapeHtml((panel.topic_options && panel.topic_options.length ? panel.topic_options.join(", ") : "Keine"))}</div>
             <div>Support Rolle: ${escapeHtml(panel.support_role_name || "Keine")}</div>
             <div>Welcome: ${escapeHtml(panel.welcome_message || "Keine Auto-Nachricht gesetzt.")}</div>
             <div>Message ID: <code>${escapeHtml(panel.message_id)}</code></div>
@@ -1468,6 +1487,7 @@
           </div>
           <div class="ticket-meta">
             <div>Claimed By: ${escapeHtml(ticket.claimed_by_name || "-")}</div>
+            <div>Thema: ${escapeHtml(ticket.selected_topic || "-")}</div>
             <div>Erstellt: ${escapeHtml(ticket.created_at || "-")}</div>
             <div>Transcript: ${escapeHtml(ticket.transcript_path || "-")}</div>
           </div>
@@ -1535,6 +1555,7 @@
               <div class="transcript-meta-row">
                 <span class="transcript-meta">Ticket-ID ${escapeHtml(ticket.id)}</span>
                 <span class="transcript-meta">Ersteller: ${escapeHtml(ticket.opener_name)}</span>
+                <span class="transcript-meta">Thema: ${escapeHtml(ticket.selected_topic || "-")}</span>
                 <span class="transcript-meta">Claim: ${escapeHtml(ticket.claimed_by_name || "-")}</span>
                 <span class="transcript-meta">Geschlossen: ${escapeHtml(ticket.closed_at || "-")}</span>
               </div>
@@ -2332,6 +2353,7 @@
         title: ticketTitleInput.value.trim(),
         description_text: ticketDescriptionInput.value.trim(),
         welcome_message: ticketWelcomeInput.value.trim(),
+        topic_options: parseTopicOptions(ticketTopicsInput.value),
       };
 
       if (!guildId) { setError("Bitte zuerst einen Discord Server auswaehlen."); return; }

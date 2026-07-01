@@ -16,6 +16,7 @@ class Ticket(Base):
     channel_id: Mapped[int] = mapped_column(BigInteger, unique=True)
     user_id: Mapped[int] = mapped_column(BigInteger, index=True)
     panel_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("ticket_panels.id"), nullable=True, index=True)
+    selected_topic: Mapped[str | None] = mapped_column(String(255), nullable=True)
     status: Mapped[str] = mapped_column(String(16), default="open")
     claimed_by_user_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True, index=True)
     claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -36,6 +37,7 @@ class TicketPanel(Base):
     description_text: Mapped[str] = mapped_column(Text, default="Klicke unten auf den Button, um ein Ticket zu erstellen.")
     category_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     category_ids_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    topic_options_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     support_role_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     welcome_message: Mapped[str | None] = mapped_column(Text, nullable=True)
 

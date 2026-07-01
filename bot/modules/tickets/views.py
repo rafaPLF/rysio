@@ -38,6 +38,24 @@ def _get_panel_category_ids(panel) -> list[int]:
     return []
 
 
+def _get_panel_topic_options(panel) -> list[str]:
+    raw_value = getattr(panel, "topic_options_json", None)
+    if not raw_value:
+        return []
+    try:
+        parsed = json.loads(raw_value)
+    except json.JSONDecodeError:
+        return []
+    if not isinstance(parsed, list):
+        return []
+    topics: list[str] = []
+    for value in parsed:
+        topic = str(value).strip()
+        if topic and topic not in topics:
+            topics.append(topic)
+    return topics[:25]
+
+
 def _resolve_panel_categories(guild: discord.Guild, panel) -> list[discord.CategoryChannel]:
     categories: list[discord.CategoryChannel] = []
     for category_id in _get_panel_category_ids(panel):
@@ -52,6 +70,7 @@ async def _create_ticket_from_panel(
     panel,
     *,
     category: discord.CategoryChannel | None = None,
+    selected_topic: str | None = None,
 ) -> tuple[discord.TextChannel | None, str | None]:
     from bot.database.repositories.ticket_repo import TicketRepository
 
@@ -108,7 +127,13 @@ async def _create_ticket_from_panel(
             overwrites=overwrites,
             reason=f"Ticket for {interaction.user}",
         )
-        ticket = await repo.create_ticket(interaction.guild.id, ticket_channel.id, interaction.user.id, panel.id if panel else None)
+        ticket = await repo.create_ticket(
+            interaction.guild.id,
+            ticket_channel.id,
+            interaction.user.id,
+            panel.id if panel else None,
+            selected_topic=selected_topic,
+        )
 
     ticket_service = interaction.client.tickets  # type: ignore[attr-defined]
     content = panel.welcome_message if panel and panel.welcome_message else interaction.client.localization.translate(  # type: ignore[attr-defined]
@@ -116,6 +141,8 @@ async def _create_ticket_from_panel(
         language=language,
         user=interaction.user.mention,
     )
+    if selected_topic:
+        content = f"{content}\n\n**Thema:** `{selected_topic}`"
     await ticket_channel.send(
         content,
         embed=ticket_service.build_ticket_status_embed(ticket),
@@ -125,8 +152,9 @@ async def _create_ticket_from_panel(
 
 
 class TicketCategorySelect(discord.ui.Select):
-    def __init__(self, panel, categories: list[discord.CategoryChannel]) -> None:
+    def __init__(self, panel, categories: list[discord.CategoryChannel], selected_topic: str | None = None) -> None:
         self.panel = panel
+        self.selected_topic = selected_topic
         options = [
             discord.SelectOption(
                 label=category.name[:100],
@@ -159,7 +187,12 @@ class TicketCategorySelect(discord.ui.Select):
             )
             return
         await interaction.response.defer(ephemeral=True, thinking=True)
-        ticket_channel, error = await _create_ticket_from_panel(interaction, self.panel, category=category)
+        ticket_channel, error = await _create_ticket_from_panel(
+            interaction,
+            self.panel,
+            category=category,
+            selected_topic=self.selected_topic,
+        )
         if error:
             await interaction.followup.send(error, ephemeral=True)
             return
@@ -172,9 +205,78 @@ class TicketCategorySelect(discord.ui.Select):
 
 
 class TicketCategorySelectView(discord.ui.View):
-    def __init__(self, panel, categories: list[discord.CategoryChannel]) -> None:
+    def __init__(self, panel, categories: list[discord.CategoryChannel], selected_topic: str | None = None) -> None:
         super().__init__(timeout=180)
-        self.add_item(TicketCategorySelect(panel, categories))
+        self.add_item(TicketCategorySelect(panel, categories, selected_topic=selected_topic))
+
+
+class TicketTopicSelect(discord.ui.Select):
+    def __init__(self, panel, topics: list[str], categories: list[discord.CategoryChannel]) -> None:
+        self.panel = panel
+        self.categories = categories
+        self.topics = topics
+        options = [
+            discord.SelectOption(
+                label=topic[:100],
+                value=topic,
+                description=f"Ticket zum Thema {topic}"[:100],
+            )
+            for topic in topics[:25]
+        ]
+        super().__init__(
+            placeholder="Thema waehlen",
+            min_values=1,
+            max_values=1,
+            options=options,
+            custom_id="tickets:topic_select",
+        )
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        if interaction.guild is None:
+            await interaction.response.send_message("Das geht nur in einem Server.", ephemeral=True)
+            return
+        language = await interaction.client.guild_config.get_language(  # type: ignore[attr-defined]
+            interaction.client.database,
+            interaction.guild.id,
+        )
+        selected_topic = str(self.values[0]).strip()
+        if selected_topic not in self.topics:
+            await interaction.response.send_message(
+                interaction.client.localization.translate("tickets.topic_not_found", language=language),  # type: ignore[attr-defined]
+                ephemeral=True,
+            )
+            return
+
+        if len(self.categories) > 1:
+            await interaction.response.send_message(
+                interaction.client.localization.translate("tickets.category_prompt", language=language),  # type: ignore[attr-defined]
+                view=TicketCategorySelectView(self.panel, self.categories, selected_topic=selected_topic),
+                ephemeral=True,
+            )
+            return
+
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        ticket_channel, error = await _create_ticket_from_panel(
+            interaction,
+            self.panel,
+            category=self.categories[0] if self.categories else None,
+            selected_topic=selected_topic,
+        )
+        if error:
+            await interaction.followup.send(error, ephemeral=True)
+            return
+        response = interaction.client.localization.translate(  # type: ignore[attr-defined]
+            "tickets.created_success",
+            language=language,
+            channel=ticket_channel.mention,
+        )
+        await interaction.followup.send(response, ephemeral=True)
+
+
+class TicketTopicSelectView(discord.ui.View):
+    def __init__(self, panel, topics: list[str], categories: list[discord.CategoryChannel]) -> None:
+        super().__init__(timeout=180)
+        self.add_item(TicketTopicSelect(panel, topics, categories))
 
 
 class TicketCreateView(discord.ui.View):
@@ -214,6 +316,14 @@ class TicketCreateView(discord.ui.View):
             return
 
         categories = _resolve_panel_categories(interaction.guild, panel)
+        topics = _get_panel_topic_options(panel)
+        if topics:
+            await interaction.response.send_message(
+                interaction.client.localization.translate("tickets.topic_prompt", language=language),  # type: ignore[attr-defined]
+                view=TicketTopicSelectView(panel, topics, categories),
+                ephemeral=True,
+            )
+            return
         if len(categories) > 1:
             await interaction.response.send_message(
                 interaction.client.localization.translate("tickets.category_prompt", language=language),  # type: ignore[attr-defined]

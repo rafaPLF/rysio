@@ -131,6 +131,24 @@ def _parse_ticket_panel_category_ids(panel) -> list[int]:
     return []
 
 
+def _parse_ticket_panel_topics(panel) -> list[str]:
+    raw_value = getattr(panel, "topic_options_json", None)
+    if not raw_value:
+        return []
+    try:
+        parsed = json.loads(raw_value)
+    except json.JSONDecodeError:
+        return []
+    if not isinstance(parsed, list):
+        return []
+    topics: list[str] = []
+    for value in parsed:
+        topic = str(value).strip()
+        if topic and topic not in topics:
+            topics.append(topic)
+    return topics[:25]
+
+
 def _serialize_ticket_panel(panel, guild: discord.Guild) -> dict[str, Any]:
     channel = guild.get_channel(panel.channel_id)
     category_ids = _parse_ticket_panel_category_ids(panel)
@@ -142,6 +160,7 @@ def _serialize_ticket_panel(panel, guild: discord.Guild) -> dict[str, Any]:
     ]
     category = categories[0] if categories else None
     support_role = guild.get_role(panel.support_role_id) if panel.support_role_id else None
+    topics = _parse_ticket_panel_topics(panel)
     return {
         "id": panel.id,
         "channel_id": str(panel.channel_id),
@@ -153,6 +172,7 @@ def _serialize_ticket_panel(panel, guild: discord.Guild) -> dict[str, Any]:
         "category_name": category.name if isinstance(category, discord.CategoryChannel) else None,
         "category_ids": [str(category_id) for category_id in category_ids],
         "category_names": [category.name for category in categories],
+        "topic_options": topics,
         "support_role_id": str(panel.support_role_id) if panel.support_role_id else None,
         "support_role_name": support_role.name if support_role else None,
         "welcome_message": panel.welcome_message or "",
@@ -170,6 +190,7 @@ def _serialize_ticket(ticket, guild: discord.Guild, notes: list[Any]) -> dict[st
         "user_id": str(ticket.user_id),
         "opener_name": _display_name_for_member(opener, ticket.user_id),
         "status": ticket.status,
+        "selected_topic": ticket.selected_topic,
         "panel_id": ticket.panel_id,
         "claimed_by_user_id": str(ticket.claimed_by_user_id) if ticket.claimed_by_user_id else None,
         "claimed_by_name": _display_name_for_member(claimer, ticket.claimed_by_user_id) if ticket.claimed_by_user_id else None,
@@ -344,6 +365,7 @@ def _build_ticket_panel_embed(
     title: str,
     description_text: str,
     show_category_hint: bool = False,
+    show_topic_hint: bool = False,
 ) -> discord.Embed:
     embed = discord.Embed(title=title, description=description_text, color=discord.Color.blurple())
     embed.add_field(
@@ -355,6 +377,12 @@ def _build_ticket_panel_embed(
         embed.add_field(
             name=bot.localization.translate("tickets.panel_category_field_name", language=language),  # type: ignore[attr-defined]
             value=bot.localization.translate("tickets.panel_category_field_value", language=language),  # type: ignore[attr-defined]
+            inline=False,
+        )
+    if show_topic_hint:
+        embed.add_field(
+            name=bot.localization.translate("tickets.panel_topic_field_name", language=language),  # type: ignore[attr-defined]
+            value=bot.localization.translate("tickets.panel_topic_field_value", language=language),  # type: ignore[attr-defined]
             inline=False,
         )
     return embed
@@ -1122,6 +1150,25 @@ def _parse_ticket_panel_category_payload(
     return category_ids, primary_category if isinstance(primary_category, discord.CategoryChannel) else None
 
 
+def _parse_ticket_panel_topics_payload(payload: dict[str, Any]) -> list[str] | web.Response:
+    raw_values = payload.get("topic_options")
+    if raw_values is None:
+        return []
+    if not isinstance(raw_values, list):
+        return web.json_response({"error": "invalid_topic_options"}, status=400)
+
+    topics: list[str] = []
+    for raw_value in raw_values:
+        topic = str(raw_value).strip()
+        if not topic:
+            continue
+        if len(topic) > 100:
+            return web.json_response({"error": "topic_too_long"}, status=400)
+        if topic not in topics:
+            topics.append(topic)
+    return topics[:25]
+
+
 async def create_ticket_panel(request: web.Request) -> web.Response:
     guild = await _get_authorized_guild(request)
     if guild is None:
@@ -1160,6 +1207,10 @@ async def create_ticket_panel(request: web.Request) -> web.Response:
     if isinstance(category_result, web.Response):
         return category_result
     category_ids, category = category_result
+    topic_result = _parse_ticket_panel_topics_payload(payload)
+    if isinstance(topic_result, web.Response):
+        return topic_result
+    topic_options = topic_result
 
     support_role = None
     if support_role_id_raw:
@@ -1193,6 +1244,7 @@ async def create_ticket_panel(request: web.Request) -> web.Response:
             title=title,
             description_text=description_text,
             show_category_hint=len(category_ids) > 1,
+            show_topic_hint=bool(topic_options),
         )
         message = await channel.send(embed=embed, view=TicketCreateView())
         panel = await ticket_repo.create_panel(
@@ -1203,6 +1255,7 @@ async def create_ticket_panel(request: web.Request) -> web.Response:
             description_text=description_text,
             category_id=category.id if category else None,
             category_ids_json=json.dumps(category_ids) if category_ids else None,
+            topic_options_json=json.dumps(topic_options) if topic_options else None,
             support_role_id=support_role.id if support_role else None,
             welcome_message=welcome_message or None,
         )
@@ -1420,6 +1473,10 @@ async def update_ticket_panel(request: web.Request) -> web.Response:
     if isinstance(category_result, web.Response):
         return category_result
     category_ids, category = category_result
+    topic_result = _parse_ticket_panel_topics_payload(payload)
+    if isinstance(topic_result, web.Response):
+        return topic_result
+    topic_options = topic_result
 
     support_role = None
     if support_role_id_raw:
@@ -1452,6 +1509,7 @@ async def update_ticket_panel(request: web.Request) -> web.Response:
             title=title,
             description_text=description_text,
             show_category_hint=len(category_ids) > 1,
+            show_topic_hint=bool(topic_options),
         )
 
         final_message_id = panel.message_id
@@ -1487,6 +1545,7 @@ async def update_ticket_panel(request: web.Request) -> web.Response:
             description_text=description_text,
             category_id=category.id if category else None,
             category_ids_json=json.dumps(category_ids) if category_ids else None,
+            topic_options_json=json.dumps(topic_options) if topic_options else None,
             support_role_id=support_role.id if support_role else None,
             welcome_message=welcome_message or None,
         )
